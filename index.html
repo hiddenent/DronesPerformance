@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Drone Show 3D (HIDDENENT) — 인터랙티브 3D 스토리텔링 그래픽 시스템 HIDDENENT</title>
+<style>
+/* =========================================================================
+   [CSS] 전체 레이아웃
+   - 왼쪽: 컨트롤 패널 / 가운데: 3D 화면 / 아래: 타임라인
+   ========================================================================= */
+:root{
+  --bg:#0b0e13;
+  --panel:#121722;
+  --panel-2:#1a2130;
+  --line:#26304200;
+  --border:#263042;
+  --text:#dfe7f5;
+  --text-dim:#8b97ad;
+  --accent:#4dd0e1;
+  --accent-2:#7c8cff;
+  --danger:#ff6b6b;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;
+  font-size:13px;
+  overflow:hidden;
+}
+#app{
+  display:grid;
+  grid-template-columns:300px 1fr;
+  grid-template-rows:1fr auto;
+  grid-template-areas:"panel stage" "panel timeline";
+  height:100vh;
+  width:100vw;
+}
+
+/* ---------- 왼쪽 패널 ---------- */
+#panel{
+  grid-area:panel;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  overflow-y:auto;
+  padding:14px 14px 40px;
+}
+#panel::-webkit-scrollbar{width:8px;}
+#panel::-webkit-scrollbar-thumb{background:#2c3850;border-radius:4px;}
+.brand{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:14px;
+}
+.brand .dot{
+  width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #9ff7ff, var(--accent));
+  box-shadow:0 0 12px rgba(77,208,225,.7);
+}
+.brand h1{font-size:14px;margin:0;letter-spacing:.3px;}
+.brand small{display:block;color:var(--text-dim);font-size:10px;font-weight:400;}
+
+.section{
+  background:var(--panel-2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 11px 12px;
+  margin-bottom:10px;
+}
+.section > h2{
+  font-size:11px;
+  letter-spacing:1.4px;
+  color:var(--accent);
+  margin:0 0 9px;
+  text-transform:uppercase;
+}
+.row{margin-bottom:9px;}
+.row:last-child{margin-bottom:0;}
+.row label{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:11px;color:var(--text-dim);margin-bottom:4px;
+}
+.row label .val{color:var(--text);font-variant-numeric:tabular-nums;}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:4px;border-radius:2px;
+  background:#2c3850;outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--accent);cursor:pointer;
+  border:2px solid #0b0e13;
+  box-shadow:0 0 6px rgba(77,208,225,.8);
+}
+input[type=range]::-moz-range-thumb{
+  width:12px;height:12px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid #0b0e13;
+}
+select,textarea,input[type=number]{
+  width:100%;
+  background:#0f141d;color:var(--text);
+  border:1px solid var(--border);border-radius:6px;
+  padding:6px 8px;font-size:12px;
+  font-family:inherit;outline:none;
+}
+select:focus,textarea:focus,input[type=number]:focus{border-color:var(--accent);}
+textarea{resize:vertical;min-height:120px;line-height:1.6;}
+
+button{
+  background:#243044;color:var(--text);
+  border:1px solid var(--border);border-radius:7px;
+  padding:7px 10px;font-size:12px;font-family:inherit;
+  cursor:pointer;transition:.15s;
+}
+button:hover{background:#2e3c55;border-color:#3a4a66;}
+button:active{transform:translateY(1px);}
+button.primary{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  color:#06121a;font-weight:700;border:none;
+}
+button.primary:hover{filter:brightness(1.1);}
+.btn-group{display:flex;gap:6px;}
+.btn-group button{flex:1;}
+
+/* 이미지 드롭존 */
+#dropZone{
+  border:1.5px dashed #33415c;border-radius:9px;
+  padding:14px 10px;text-align:center;
+  color:var(--text-dim);font-size:11px;line-height:1.7;
+  cursor:pointer;transition:.15s;background:#0f141d;
+}
+#dropZone:hover,#dropZone.dragover{
+  border-color:var(--accent);color:var(--accent);
+  background:rgba(77,208,225,.07);
+}
+#previewWrap{margin-top:9px;display:none;}
+#preview{
+  width:100%;border-radius:7px;display:block;
+  border:1px solid var(--border);background:#000;
+}
+.meta{font-size:10px;color:var(--text-dim);margin-top:5px;text-align:center;}
+
+/* ---------- 3D 무대 ---------- */
+#stage{grid-area:stage;position:relative;overflow:hidden;background:#05070b;}
+#gl{display:block;width:100%;height:100%;touch-action:none;cursor:grab;}
+#gl:active{cursor:grabbing;}
+#hud{
+  position:absolute;top:12px;left:14px;pointer-events:none;
+  font-size:11px;color:var(--text-dim);line-height:1.7;
+  text-shadow:0 1px 3px #000;
+}
+#hud b{color:var(--accent);font-weight:600;}
+#sceneTag{
+  position:absolute;top:12px;right:16px;
+  font-size:12px;color:var(--text);pointer-events:none;
+  background:rgba(10,14,20,.6);border:1px solid var(--border);
+  padding:5px 11px;border-radius:20px;backdrop-filter:blur(4px);
+}
+#help{
+  position:absolute;bottom:12px;left:14px;pointer-events:none;
+  font-size:10.5px;color:#5f6b80;line-height:1.7;
+}
+#errorBox{
+  position:absolute;inset:0;display:none;
+  align-items:center;justify-content:center;text-align:center;
+  padding:30px;color:var(--danger);font-size:13px;line-height:1.8;
+}
+
+/* ---------- 타임라인 ---------- */
+#timeline{
+  grid-area:timeline;
+  background:var(--panel);
+  border-top:1px solid var(--border);
+  padding:10px 16px 12px;
+}
+.tl-top{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap;}
+.tl-top .time{
+  font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-dim);
+  margin-left:4px;
+}
+.tl-top .time b{color:var(--text);}
+.spacer{flex:1;}
+.icon-btn{min-width:38px;}
+#track{
+  position:relative;height:34px;border-radius:7px;
+  background:#0f141d;border:1px solid var(--border);
+  display:flex;overflow:hidden;cursor:pointer;user-select:none;
+}
+.seg{
+  position:relative;height:100%;
+  border-right:1px solid rgba(0,0,0,.45);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10.5px;color:#cfe8ee;white-space:nowrap;overflow:hidden;
+  padding:0 4px;transition:filter .15s;
+}
+.seg:last-child{border-right:none;}
+.seg:hover{filter:brightness(1.35);}
+.seg.active{box-shadow:inset 0 0 0 1.5px var(--accent);}
+#playhead{
+  position:absolute;top:0;left:0;width:2px;height:100%;
+  background:#fff;box-shadow:0 0 8px rgba(255,255,255,.9);
+  pointer-events:none;
+}
+#sceneEdit{
+  margin-top:8px;display:flex;align-items:center;gap:8px;
+  font-size:11px;color:var(--text-dim);
+}
+#sceneEdit input{width:80px;}
+
+@media (max-width:900px){
+  #app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;
+       grid-template-areas:"panel" "stage" "timeline";}
+  #panel{max-height:38vh;border-right:none;border-bottom:1px solid var(--border);}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== 왼쪽 컨트롤 패널 ===================== -->
+  <aside id="panel">
+    <div class="brand">
+      <div class="dot"></div>
+      <h1>Drone Show 3D (HIDDENENT)
+        <small>이미지 → 원형 픽셀 → 3D 입자 스토리</small>
+      </h1>
+    </div>
+
+    <!-- IMAGE -->
+    <div class="section">
+      <h2>Image</h2>
+      <div id="dropZone">
+        <strong>이미지를 드래그 &amp; 드롭</strong><br>
+        또는 클릭해서 파일 선택<br>
+        <span style="font-size:10px;">JPG · JPEG · PNG · WebP · GIF</span>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" hidden />
+      <div id="previewWrap">
+        <img id="preview" alt="업로드한 이미지 미리보기" />
+        <div class="meta" id="imgMeta"></div>
+      </div>
+      <div class="btn-group" style="margin-top:9px;">
+        <button id="btnDemo">기본 예제 이미지</button>
+      </div>
+    </div>
+
+    <!-- PIXEL -->
+    <div class="section">
+      <h2>Pixel</h2>
+      <div class="row">
+        <label>Pixel Spacing (픽셀 간격) <span class="val" id="vSpacing">10 px</span></label>
+        <input type="range" id="spacing" min="2" max="24" step="1" value="10" />
+      </div>
+      <div class="row">
+        <label>Particle Size (원형 크기) <span class="val" id="vSize">1.00</span></label>
+        <input type="range" id="size" min="0.2" max="3" step="0.05" value="1" />
+      </div>
+      <div class="row">
+        <label>Depth (3D 깊이) <span class="val" id="vDepth">24</span></label>
+        <input type="range" id="depth" min="0" max="90" step="1" value="24" />
+      </div>
+      <div class="row">
+        <label>Height (높이 변화) <span class="val" id="vHeight">0</span></label>
+        <input type="range" id="height" min="-60" max="60" step="1" value="0" />
+      </div>
+      <div class="row">
+        <label>Opacity (투명도) <span class="val" id="vOpacity">1.00</span></label>
+        <input type="range" id="opacity" min="0.05" max="1" step="0.05" value="1" />
+      </div>
+      <div class="btn-group" style="margin-top:10px;">
+        <button id="btnPreset1">2 px</button>
+        <button id="btnPreset2">5 px</button>
+        <button id="btnPreset3">10 px</button>
+        <button id="btnPreset4">15 px</button>
+        <button id="btnPreset5">20 px</button>
+      </div>
+    </div>
+
+    <!-- ANIMATION -->
+    <div class="section">
+      <h2>Animation</h2>
+      <div class="row">
+        <label>Speed (애니메이션 속도) <span class="val" id="vSpeed">1.00x</span></label>
+        <input type="range" id="speed" min="0.1" max="3" step="0.05" value="1" />
+      </div>
+      <div class="row">
+        <label>Easing (보간 방식)</label>
+        <select id="easing">
+          <option value="linear">Linear (일정 속도)</option>
+          <option value="easeIn">Ease In (천천히 시작)</option>
+          <option value="easeOut">Ease Out (천천히 도착)</option>
+          <option value="easeInOut" selected>Ease In Out (양쪽 부드럽게)</option>
+          <option value="cubic">Cubic (강한 가감속)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Particle Motion (입자 고유 움직임)</label>
+        <select id="motion">
+          <option value="none">None (정지)</option>
+          <option value="float" selected>Float (부유)</option>
+          <option value="wave">Wave (파도)</option>
+          <option value="orbit">Orbit (미세 공전)</option>
+        </select>
+      </div>
+      <div class="row" style="display:flex;gap:14px;align-items:center;margin-top:10px;">
+        <label style="margin:0;cursor:pointer;">
+          <input type="checkbox" id="autoRotate" /> 자동 회전
+        </label>
+        <label style="margin:0;cursor:pointer;">
+          <input type="checkbox" id="loopPlay" checked /> 반복 재생
+        </label>
+      </div>
+    </div>
+
+    <!-- STORY -->
+    <div class="section">
+      <h2>Story</h2>
+      <textarea id="story" spellcheck="false"></textarea>
+      <div class="btn-group" style="margin-top:8px;">
+        <button class="primary" id="btnStory">Story → Animation</button>
+      </div>
+      <div class="btn-group" style="margin-top:6px;">
+        <button id="btnStoryReset">예시 스토리</button>
+        <button id="btnStoryClear">비우기</button>
+      </div>
+      <div class="meta" style="text-align:left;margin-top:8px;line-height:1.8;">
+        인식 키워드 · 모인다 / 흩어진다 / 정렬한다 / 올라간다 /
+        내려간다 / 회전한다 / 확대된다 / 축소된다 / 만들어진다 /
+        사라진다 / 나타난다 / 폭발한다 / 파도처럼 움직인다
+      </div>
+    </div>
+
+    <!-- VIEW -->
+    <div class="section">
+      <h2>View</h2>
+      <div class="btn-group">
+        <button id="btnResetView">카메라 초기화</button>
+        <button id="btnResetAll">전체 초기화</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== 3D 무대 ===================== -->
+  <main id="stage">
+    <canvas id="gl"></canvas>
+    <div id="hud">
+      입자 <b id="hudCount">0</b> 개 · 그리드 <b id="hudGrid">0×0</b><br>
+      <b id="hudFps">0</b> FPS
+    </div>
+    <div id="sceneTag">대기 중</div>
+    <div id="help">
+      드래그 = 회전 · 휠 = 확대/축소 · 우클릭 드래그(또는 Shift+드래그) = 이동 · 더블클릭 = 초기화
+    </div>
+    <div id="errorBox"></div>
+  </main>
+
+  <!-- ===================== 타임라인 ===================== -->
+  <footer id="timeline">
+    <div class="tl-top">
+      <button class="icon-btn" id="btnPlay" title="재생">▶</button>
+      <button class="icon-btn" id="btnPause" title="일시정지">❚❚</button>
+      <button class="icon-btn" id="btnStop" title="정지">■</button>
+      <button class="icon-btn" id="btnRestart" title="처음부터">↺</button>
+      <span class="time"><b id="curTime">0:00.0</b> / <span id="totTime">0:00.0</span></span>
+      <span class="spacer"></span>
+      <span class="time" id="sceneInfo">Scene –</span>
+    </div>
+    <div id="track"><div id="playhead"></div></div>
+    <div id="sceneEdit">
+      <span id="sceneEditLabel">Scene 길이(초) — 장면을 먼저 선택하세요</span>
+      <input type="number" id="sceneDur" min="0.5" max="30" step="0.5" value="3" />
+      <button id="btnSceneApply">적용</button>
+      <span style="color:#5f6b80;">타임라인의 장면을 클릭하면 해당 장면으로 이동합니다.</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+ * Drone Show 3D (HIDDENENT) — 인터랙티브 3D 스토리텔링 그래픽 시스템
+ * -------------------------------------------------------------------------
+ * 외부 라이브러리 없이 순수 WebGL 로 구현했습니다. (파일 하나로 실행 가능)
+ *  1) 이미지 업로드 → 분석 캔버스에 축소해서 그림
+ *  2) 일정 간격(Pixel Spacing)으로 색을 샘플링 → 원형 입자(Circular Pixel) 생성
+ *  3) gl.POINTS + 프래그먼트 셰이더의 원형 마스크로 "원형 픽셀"을 GPU 로 한 번에 그림
+ *  4) 스토리 텍스트를 해석해 Scene 시퀀스를 만들고, 입자의 목표 위치로 보간 이동
+ * ========================================================================= */
+
+/* ======================= 0. 공통 유틸 ======================= */
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp  = (a, b, t) => a + (b - a) * t;
+
+/** 재현 가능한 의사 난수 (같은 입자는 항상 같은 값을 갖도록) */
+function hashRandom(seed) {
+  let x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+/** 시간 표시 (0:00.0) */
+function fmtTime(sec) {
+  sec = Math.max(0, sec);
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1);
+}
+
+/* ======================= 1. 4x4 행렬 수학 =======================
+ * WebGL 은 column-major 순서의 Float32Array(16) 을 사용합니다.
+ * ============================================================== */
+const Mat4 = {
+  identity(out) {
+    out.set([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+    return out;
+  },
+  /** 원근 투영 행렬 */
+  perspective(out, fovyRad, aspect, near, far) {
+    const f = 1 / Math.tan(fovyRad / 2);
+    const nf = 1 / (near - far);
+    out[0]=f/aspect; out[1]=0; out[2]=0;  out[3]=0;
+    out[4]=0;  out[5]=f; out[6]=0;        out[7]=0;
+    out[8]=0;  out[9]=0; out[10]=(far+near)*nf; out[11]=-1;
+    out[12]=0; out[13]=0; out[14]=2*far*near*nf; out[15]=0;
+    return out;
+  },
+  /** 카메라(eye)가 center 를 바라보는 뷰 행렬 */
+  lookAt(out, eye, center, up) {
+    let zx = eye[0]-center[0], zy = eye[1]-center[1], zz = eye[2]-center[2];
+    let len = Math.hypot(zx, zy, zz) || 1e-6;
+    zx/=len; zy/=len; zz/=len;
+    // x = up × z
+    let xx = up[1]*zz - up[2]*zy,
+        xy = up[2]*zx - up[0]*zz,
+        xz = up[0]*zy - up[1]*zx;
+    len = Math.hypot(xx, xy, xz);
+    if (len < 1e-6) { xx = 1; xy = 0; xz = 0; } else { xx/=len; xy/=len; xz/=len; }
+    // y = z × x
+    const yx = zy*xz - zz*xy,
+          yy = zz*xx - zx*xz,
+          yz = zx*xy - zy*xx;
+    out[0]=xx; out[1]=yx; out[2]=zx; out[3]=0;
+    out[4]=xy; out[5]=yy; out[6]=zy; out[7]=0;
+    out[8]=xz; out[9]=yz; out[10]=zz; out[11]=0;
+    out[12]=-(xx*eye[0]+xy*eye[1]+xz*eye[2]);
+    out[13]=-(yx*eye[0]+yy*eye[1]+yz*eye[2]);
+    out[14]=-(zx*eye[0]+zy*eye[1]+zz*eye[2]);
+    out[15]=1;
+    return out;
+  }
+};
+
+/* ======================= 2. 보간(Easing) 함수 ======================= */
+const Easing = {
+  linear:    (t) => t,
+  easeIn:    (t) => t * t,
+  easeOut:   (t) => 1 - (1 - t) * (1 - t),
+  easeInOut: (t) => (t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2),
+  cubic:     (t) => (t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2)
+};
+function applyEasing(name, t) {
+  const fn = Easing[name] || Easing.easeInOut;
+  return fn(clamp(t, 0, 1));
+}
+
+/* ======================= 3. WebGL 렌더러 =======================
+ * 원형 픽셀 하나 = gl.POINTS 의 점 하나.
+ * 프래그먼트 셰이더에서 gl_PointCoord 로 원형 마스크를 적용하고
+ * 약간의 구(球) 음영을 주어 3D 입자처럼 보이게 합니다.
+ * ============================================================== */
+const VERT_SRC = `
+attribute vec3  aPos;     // 입자의 3D 위치
+attribute vec3  aColor;   // 입자 색상(RGB)
+attribute float aSize;    // 입자의 월드 지름
+attribute float aAlpha;   // 입자 개별 투명도
+
+uniform mat4  uView;
+uniform mat4  uProj;
+uniform float uProjScale; // 화면 높이 기반 스케일 (원근 크기 계산용)
+uniform float uSizeScale; // Particle Size 슬라이더
+uniform float uGlobalAlpha;
+uniform float uMaxPoint;  // 하드웨어가 지원하는 최대 포인트 크기
+
+varying vec3  vColor;
+varying float vAlpha;
+
+void main() {
+  vec4 viewPos = uView * vec4(aPos, 1.0);
+  gl_Position  = uProj * viewPos;
+
+  float dist = max(-viewPos.z, 0.001);            // 카메라와의 거리
+  float px   = aSize * uSizeScale * uProjScale / dist; // 원근 보정된 픽셀 크기
+  gl_PointSize = clamp(px, 1.0, uMaxPoint);
+
+  vColor = aColor;
+  vAlpha = aAlpha * uGlobalAlpha;
+}
+`;
+
+const FRAG_SRC = `
+precision mediump float;
+varying vec3  vColor;
+varying float vAlpha;
+
+void main() {
+  // gl_PointCoord: 점 내부의 0~1 좌표 → 중심에서의 거리로 원을 만든다
+  vec2  offset = gl_PointCoord - vec2(0.5);
+  float dist   = length(offset) * 2.0;
+  if (dist > 1.0) discard;                       // 원 바깥은 그리지 않음 → 원형 픽셀
+
+  float edge = 1.0 - smoothstep(0.82, 1.0, dist); // 가장자리 안티에일리어싱
+  // 왼쪽 위에서 빛이 오는 듯한 간단한 구체 음영
+  float light = 1.18 - 0.5 * dist * dist
+              - 0.25 * length(offset - vec2(-0.14, -0.14));
+  vec3  col   = clamp(vColor * clamp(light, 0.45, 1.35), 0.0, 1.0);
+
+  float a = vAlpha * edge;
+  if (a < 0.01) discard;
+  gl_FragColor = vec4(col, a);
+}
+`;
+
+const Renderer = {
+  gl: null, program: null, ok: false,
+  buffers: {}, attribs: {}, uniforms: {},
+  maxPointSize: 64,
+  proj: new Float32Array(16),
+  view: new Float32Array(16),
+
+  init(canvas) {
+    const opts = { antialias:true, alpha:false, depth:true, premultipliedAlpha:false };
+    const gl = canvas.getContext("webgl", opts) || canvas.getContext("experimental-webgl", opts);
+    if (!gl) return false;
+    this.gl = gl;
+
+    const vs = this.compile(gl.VERTEX_SHADER, VERT_SRC);
+    const fs = this.compile(gl.FRAGMENT_SHADER, FRAG_SRC);
+    if (!vs || !fs) return false;
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error("프로그램 링크 실패:", gl.getProgramInfoLog(prog));
+      return false;
+    }
+    this.program = prog;
+    gl.useProgram(prog);
+
+    this.attribs = {
+      aPos:   gl.getAttribLocation(prog, "aPos"),
+      aColor: gl.getAttribLocation(prog, "aColor"),
+      aSize:  gl.getAttribLocation(prog, "aSize"),
+      aAlpha: gl.getAttribLocation(prog, "aAlpha")
+    };
+    this.uniforms = {
+      uView:  gl.getUniformLocation(prog, "uView"),
+      uProj:  gl.getUniformLocation(prog, "uProj"),
+      uProjScale:   gl.getUniformLocation(prog, "uProjScale"),
+      uSizeScale:   gl.getUniformLocation(prog, "uSizeScale"),
+      uGlobalAlpha: gl.getUniformLocation(prog, "uGlobalAlpha"),
+      uMaxPoint:    gl.getUniformLocation(prog, "uMaxPoint")
+    };
+
+    this.buffers = {
+      pos:   gl.createBuffer(),
+      color: gl.createBuffer(),
+      size:  gl.createBuffer(),
+      alpha: gl.createBuffer()
+    };
+
+    const range = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
+    this.maxPointSize = (range && range[1]) ? Math.min(range[1], 400) : 64;
+
+    gl.clearColor(0.02, 0.027, 0.043, 1.0);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.enable(gl.DEPTH_TEST);
+
+    this.ok = true;
+    return true;
+  },
+
+  compile(type, src) {
+    const gl = this.gl;
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      console.error("셰이더 컴파일 실패:", gl.getShaderInfoLog(sh));
+      return null;
+    }
+    return sh;
+  },
+
+  /** 입자 개수가 바뀌었을 때 버퍼 재할당 */
+  allocate(count) {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.pos);
+    gl.bufferData(gl.ARRAY_BUFFER, count * 3 * 4, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.alpha);
+    gl.bufferData(gl.ARRAY_BUFFER, count * 4, gl.DYNAMIC_DRAW);
+  },
+
+  uploadStatic(colors, sizes) {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.color);
+    gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.size);
+    gl.bufferData(gl.ARRAY_BUFFER, sizes, gl.STATIC_DRAW);
+  },
+
+  draw(state) {
+    const gl = this.gl;
+    const n = state.count;
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (!n) return;
+
+    // 반투명일 때는 깊이 쓰기를 꺼서 뒤쪽 입자가 사라지지 않게 한다
+    gl.depthMask(state.globalAlpha >= 0.99);
+
+    gl.useProgram(this.program);
+
+    // 동적 데이터(위치/투명도) 갱신
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.pos);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, state.positions.subarray(0, n * 3));
+    gl.enableVertexAttribArray(this.attribs.aPos);
+    gl.vertexAttribPointer(this.attribs.aPos, 3, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.alpha);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, state.alphas.subarray(0, n));
+    gl.enableVertexAttribArray(this.attribs.aAlpha);
+    gl.vertexAttribPointer(this.attribs.aAlpha, 1, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.color);
+    gl.enableVertexAttribArray(this.attribs.aColor);
+    gl.vertexAttribPointer(this.attribs.aColor, 3, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.size);
+    gl.enableVertexAttribArray(this.attribs.aSize);
+    gl.vertexAttribPointer(this.attribs.aSize, 1, gl.FLOAT, false, 0, 0);
+
+    gl.uniformMatrix4fv(this.uniforms.uProj, false, this.proj);
+    gl.uniformMatrix4fv(this.uniforms.uView, false, this.view);
+    gl.uniform1f(this.uniforms.uProjScale,  state.projScale);
+    gl.uniform1f(this.uniforms.uSizeScale,  state.sizeScale);
+    gl.uniform1f(this.uniforms.uGlobalAlpha, state.globalAlpha);
+    gl.uniform1f(this.uniforms.uMaxPoint,   this.maxPointSize);
+
+    gl.drawArrays(gl.POINTS, 0, n);
+  }
+};
+
+/* ======================= 4. 궤도(Orbit) 카메라 =======================
+ * 구면 좌표(theta/phi/radius) + 타깃 이동(pan) 방식의 직접 구현 카메라
+ * ================================================================== */
+const Camera = {
+  theta: 0,            // 수평 회전(라디안)
+  phi: Math.PI / 2.35, // 수직 각도
+  radius: 165,
+  target: [0, 0, 0],
+  fov: 50 * Math.PI / 180,
+  eye: [0, 0, 0],
+  defaults: null,
+
+  saveDefaults() {
+    this.defaults = {
+      theta: this.theta, phi: this.phi, radius: this.radius,
+      target: this.target.slice()
+    };
+  },
+  reset() {
+    if (!this.defaults) return;
+    this.theta  = this.defaults.theta;
+    this.phi    = this.defaults.phi;
+    this.radius = this.defaults.radius;
+    this.target = this.defaults.target.slice();
+  },
+  /** 카메라 위치 계산 후 뷰/투영 행렬 갱신 */
+  update(aspect) {
+    this.phi = clamp(this.phi, 0.05, Math.PI - 0.05);
+    this.radius = clamp(this.radius, 12, 1400);
+    const sp = Math.sin(this.phi), cp = Math.cos(this.phi);
+    this.eye[0] = this.target[0] + this.radius * sp * Math.sin(this.theta);
+    this.eye[1] = this.target[1] + this.radius * cp;
+    this.eye[2] = this.target[2] + this.radius * sp * Math.cos(this.theta);
+    Mat4.perspective(Renderer.proj, this.fov, aspect, 0.5, 6000);
+    Mat4.lookAt(Renderer.view, this.eye, this.target, [0, 1, 0]);
+  },
+  /** 화면 기준으로 카메라 타깃을 이동(Pan) */
+  pan(dxPixels, dyPixels, viewportHeight) {
+    // 시야각·거리에 비례해 이동량을 계산하면 어느 줌에서도 자연스럽다
+    const worldPerPixel = (2 * Math.tan(this.fov / 2) * this.radius) / viewportHeight;
+    const sp = Math.sin(this.phi), cp = Math.cos(this.phi);
+    const fx = sp * Math.sin(this.theta), fy = cp, fz = sp * Math.cos(this.theta);
+    // right = normalize(up × forward)
+    let rx =  Math.cos(this.theta), ry = 0, rz = -Math.sin(this.theta);
+    // up = forward × right
+    const ux = fy*rz - fz*ry, uy = fz*rx - fx*rz, uz = fx*ry - fy*rx;
+    const mx = -dxPixels * worldPerPixel, my = dyPixels * worldPerPixel;
+    this.target[0] += rx*mx + ux*my;
+    this.target[1] += ry*mx + uy*my;
+    this.target[2] += rz*mx + uz*my;
+  }
+};
+
+/* ======================= 5. 입자 시스템 =======================
+ * 모든 입자 데이터는 TypedArray 로 관리합니다(가비지 최소화 + 빠른 접근).
+ *  - base*   : 이미지 형태를 이룰 때의 좌표(목표 형태)
+ *  - scatter*: 3D 공간에 흩어져 있을 때의 좌표
+ *  - cur*    : 현재 좌표 / target* : 이번 장면의 목표 좌표
+ *  - start*  : 장면이 시작될 때의 좌표(보간 시작점)
+ * ============================================================== */
+const MAX_PARTICLES = 60000;   // 성능 보호를 위한 상한 (넘으면 자동 샘플링)
+const ANALYSIS_LONG = 500;     // 이미지 분석 캔버스의 긴 변 길이(px)
+const WORLD_LONG    = 100;     // 월드 좌표 기준 크기 (100 × 100 기준)
+
+const P = {
+  count: 0, capacity: 0,
+  cols: 0, rows: 0, worldStep: 1, worldW: 100, worldH: 100,
+  positions: null, alphas: null, colors: null, sizes: null,
+  baseX:null, baseY:null, baseZ:null,
+  scatterX:null, scatterY:null, scatterZ:null,
+  curX:null, curY:null, curZ:null,
+  tgtX:null, tgtY:null, tgtZ:null,
+  startX:null, startY:null, startZ:null,
+  curA:null, tgtA:null, startA:null,
+  bright:null, rnd:null, rnd2:null, cellR:null,
+
+  allocate(n) {
+    if (n <= this.capacity) return;
+    const cap = n;
+    this.capacity = cap;
+    this.positions = new Float32Array(cap * 3);
+    this.colors    = new Float32Array(cap * 3);
+    this.alphas    = new Float32Array(cap);
+    this.sizes     = new Float32Array(cap);
+    const f = () => new Float32Array(cap);
+    this.baseX=f(); this.baseY=f(); this.baseZ=f();
+    this.scatterX=f(); this.scatterY=f(); this.scatterZ=f();
+    this.curX=f(); this.curY=f(); this.curZ=f();
+    this.tgtX=f(); this.tgtY=f(); this.tgtZ=f();
+    this.startX=f(); this.startY=f(); this.startZ=f();
+    this.curA=f(); this.tgtA=f(); this.startA=f();
+    this.bright=f(); this.rnd=f(); this.rnd2=f(); this.cellR=f();
+    Renderer.allocate(cap);
+  }
+};
+
+/* ---- 이미지 분석용 오프스크린 캔버스 ---- */
+const analysisCanvas = document.createElement("canvas");
+const analysisCtx = analysisCanvas.getContext("2d", { willReadFrequently: true });
+let sourceImage = null;      // 현재 사용 중인 이미지(Image 또는 Canvas)
+let sourceLabel = "기본 예제";
+
+/**
+ * 이미지를 격자로 샘플링해서 원형 픽셀(입자)을 다시 만든다.
+ * spacing: 픽셀 간격(px, 분석 캔버스 기준)
+ */
+function buildParticles() {
+  if (!sourceImage) return;
+  const spacingInput = parseInt($("spacing").value, 10);
+
+  // 1) 이미지 비율을 유지하며 분석 캔버스에 축소해서 그린다
+  const iw = sourceImage.naturalWidth  || sourceImage.width;
+  const ih = sourceImage.naturalHeight || sourceImage.height;
+  if (!iw || !ih) return;
+  const scale = ANALYSIS_LONG / Math.max(iw, ih);
+  const aw = Math.max(2, Math.round(iw * scale));
+  const ah = Math.max(2, Math.round(ih * scale));
+  analysisCanvas.width = aw;
+  analysisCanvas.height = ah;
+  analysisCtx.clearRect(0, 0, aw, ah);
+  try {
+    analysisCtx.drawImage(sourceImage, 0, 0, aw, ah);
+  } catch (err) {
+    console.error("이미지를 그릴 수 없습니다:", err);
+    return;
+  }
+
+  // 2) 입자 수가 상한을 넘으면 간격을 자동으로 넓힌다(자동 샘플링)
+  let spacing = spacingInput;
+  let cols, rows;
+  for (;;) {
+    cols = Math.max(2, Math.floor(aw / spacing));
+    rows = Math.max(2, Math.floor(ah / spacing));
+    if (cols * rows <= MAX_PARTICLES || spacing > 200) break;
+    spacing += 1;
+  }
+
+  let data;
+  try {
+    data = analysisCtx.getImageData(0, 0, aw, ah).data;
+  } catch (err) {
+    // 로컬 파일에서 외부 이미지를 쓰는 등 보안 제한이 걸린 경우
+    showError("이미지 픽셀을 읽을 수 없습니다(보안 제한). 다른 이미지를 사용해 주세요.");
+    return;
+  }
+
+  P.allocate(cols * rows);
+
+  // 3) 월드 크기: 긴 변이 100 단위가 되도록(= 100 × 100 기준)
+  const worldW = (aw >= ah) ? WORLD_LONG : WORLD_LONG * (aw / ah);
+  const worldH = (ah >= aw) ? WORLD_LONG : WORLD_LONG * (ah / aw);
+  const stepX = worldW / cols, stepY = worldH / rows;
+  P.worldW = worldW; P.worldH = worldH;
+  P.worldStep = Math.min(stepX, stepY);
+  P.cols = cols; P.rows = rows;
+
+  const depth  = parseFloat($("depth").value);
+  const heightAmount = parseFloat($("height").value);
+
+  let n = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      // 각 셀의 "중심점"에서 색을 추출한다
+      const px = Math.min(aw - 1, Math.floor((c + 0.5) * (aw / cols)));
+      const py = Math.min(ah - 1, Math.floor((r + 0.5) * (ah / rows)));
+      const idx = (py * aw + px) * 4;
+      const a = data[idx + 3];
+      if (a < 12) continue;                 // 투명한 영역은 입자를 만들지 않음
+      const cr = data[idx] / 255, cg = data[idx+1] / 255, cb = data[idx+2] / 255;
+      const bright = 0.299*cr + 0.587*cg + 0.114*cb;
+
+      const x = (c + 0.5) * stepX - worldW / 2;
+      const y = -((r + 0.5) * stepY - worldH / 2);   // 화면 좌표 → 월드 좌표(Y 반전)
+
+      P.colors[n*3]   = cr;
+      P.colors[n*3+1] = cg;
+      P.colors[n*3+2] = cb;
+      P.bright[n] = bright;
+      P.cellR[n] = r;                       // 원본 격자의 행 번호(높이 재계산용)
+      P.rnd[n]  = hashRandom(n + 1);
+      P.rnd2[n] = hashRandom(n * 3.7 + 17.3);
+
+      P.baseX[n] = x;
+      P.baseY[n] = y + (bright - 0.5) * heightAmount;
+      P.baseZ[n] = (bright - 0.5) * depth;
+
+      // 크기: 격자 간격을 지름으로 삼아 살짝 변화를 준다
+      P.sizes[n] = P.worldStep * (0.92 + P.rnd[n] * 0.2);
+
+      // 흩어진 상태(Scene 1)의 좌표: 구(球) 안쪽의 임의 위치
+      const u = P.rnd[n] * Math.PI * 2;
+      const v = Math.acos(clamp(P.rnd2[n] * 2 - 1, -1, 1));
+      const rad = 70 + hashRandom(n * 0.77 + 5.1) * 110;
+      P.scatterX[n] = Math.sin(v) * Math.cos(u) * rad;
+      P.scatterY[n] = Math.cos(v) * rad * 0.8;
+      P.scatterZ[n] = Math.sin(v) * Math.sin(u) * rad;
+
+      // 처음에는 이미지 형태 그대로 보여준다
+      P.curX[n] = P.baseX[n]; P.curY[n] = P.baseY[n]; P.curZ[n] = P.baseZ[n];
+      P.tgtX[n] = P.baseX[n]; P.tgtY[n] = P.baseY[n]; P.tgtZ[n] = P.baseZ[n];
+      P.curA[n] = 1; P.tgtA[n] = 1; P.startA[n] = 1;
+      P.alphas[n] = 1;
+      n++;
+    }
+  }
+  P.count = n;
+
+  Renderer.uploadStatic(P.colors.subarray(0, Math.max(1, n*3)), P.sizes.subarray(0, Math.max(1, n)));
+
+  $("hudCount").textContent = n.toLocaleString();
+  $("hudGrid").textContent  = cols + "×" + rows;
+  $("imgMeta").textContent  =
+    sourceLabel + " · " + iw + "×" + ih + "px · 간격 " + spacing + "px · 입자 " + n.toLocaleString() + "개"
+    + (spacing !== spacingInput ? " (자동 샘플링)" : "");
+
+  Timeline.captureStart();  // 장면 보간 시작점 재설정
+}
+
+/** Depth / Height 슬라이더는 입자를 다시 만들지 않고 base 좌표만 갱신한다(빠름) */
+function refreshBaseShape() {
+  if (!P.count || !P.rows) return;
+  const depth = parseFloat($("depth").value);
+  const heightAmount = parseFloat($("height").value);
+  const stepY = P.worldH / P.rows;
+  for (let i = 0; i < P.count; i++) {
+    const b = P.bright[i];
+    const gridY = -((P.cellR[i] + 0.5) * stepY - P.worldH / 2);
+    P.baseY[i] = gridY + (b - 0.5) * heightAmount;
+    P.baseZ[i] = (b - 0.5) * depth;
+  }
+}
+
+/* ======================= 6. 장면(Scene) 정의 =======================
+ * 각 장면은 { type, label, dur } 로 구성되고,
+ * computeTargets() 가 장면 종류에 따라 모든 입자의 목표 좌표를 계산합니다.
+ * ================================================================== */
+const SCENE_META = {
+  scatter: { label: "흩어진 점",   color: "#2f4a63" },
+  gather:  { label: "중앙에 모임", color: "#2f5f6b" },
+  align:   { label: "정렬",        color: "#38607f" },
+  rise:    { label: "상승",        color: "#3a6f5f" },
+  fall:    { label: "하강",        color: "#4a5f7a" },
+  form:    { label: "형태 생성",   color: "#3f7a8c" },
+  rotate:  { label: "회전",        color: "#5a5f90" },
+  expand:  { label: "확대",        color: "#6a5a86" },
+  shrink:  { label: "축소",        color: "#4d5a86" },
+  wave:    { label: "파도",        color: "#2f6f86" },
+  explode: { label: "폭발",        color: "#8a4b4b" },
+  fadeOut: { label: "사라짐",      color: "#3a3f52" },
+  fadeIn:  { label: "나타남",      color: "#42706b" },
+  disperse:{ label: "해체",        color: "#5b4a6b" }
+};
+
+/** 장면의 목표 좌표/투명도를 계산 (localT: 장면 내부 경과 시간) */
+function computeTargets(scene, localT) {
+  const n = P.count;
+  const type = scene.type;
+  const tX = P.tgtX, tY = P.tgtY, tZ = P.tgtZ, tA = P.tgtA;
+  const bX = P.baseX, bY = P.baseY, bZ = P.baseZ;
+
+  switch (type) {
+    case "scatter":
+    case "disperse": {
+      const k = (type === "disperse") ? 1.35 : 1.0;
+      for (let i = 0; i < n; i++) {
+        tX[i] = P.scatterX[i] * k;
+        tY[i] = P.scatterY[i] * k;
+        tZ[i] = P.scatterZ[i] * k;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "gather": {
+      // 중앙의 작은 구름 형태로 모인다
+      for (let i = 0; i < n; i++) {
+        const s = 0.13 + P.rnd[i] * 0.07;
+        tX[i] = P.scatterX[i] * s;
+        tY[i] = P.scatterY[i] * s;
+        tZ[i] = P.scatterZ[i] * s;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "align": {
+      // 여러 개의 행으로 일정 간격 정렬
+      const perRow = Math.max(8, Math.ceil(Math.sqrt(n * 2.4)));
+      const rowCount = Math.ceil(n / perRow);
+      const gap = Math.max(P.worldStep * 1.15, 130 / perRow);
+      for (let i = 0; i < n; i++) {
+        const c = i % perRow, r = Math.floor(i / perRow);
+        tX[i] = (c - (perRow - 1) / 2) * gap;
+        tY[i] = ((rowCount - 1) / 2 - r) * gap * 1.25;
+        tZ[i] = 0;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "rise":
+    case "fall": {
+      const dir = (type === "rise") ? 1 : -1;
+      const amt = 46 * dir;
+      for (let i = 0; i < n; i++) {
+        tX[i] = bX[i];
+        tY[i] = bY[i] + amt * (0.55 + P.rnd[i] * 0.9);
+        tZ[i] = bZ[i];
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "form": {
+      for (let i = 0; i < n; i++) {
+        tX[i] = bX[i]; tY[i] = bY[i]; tZ[i] = bZ[i]; tA[i] = 1;
+      }
+      break;
+    }
+    case "rotate": {
+      const ang = localT * 0.9;               // 시간에 따라 계속 도는 목표 좌표
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      for (let i = 0; i < n; i++) {
+        const x = bX[i], z = bZ[i];
+        tX[i] = x * ca + z * sa;
+        tY[i] = bY[i];
+        tZ[i] = -x * sa + z * ca;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "expand":
+    case "shrink": {
+      const k = (type === "expand") ? 2.1 : 0.42;
+      for (let i = 0; i < n; i++) {
+        tX[i] = bX[i] * k; tY[i] = bY[i] * k; tZ[i] = bZ[i] * k; tA[i] = 1;
+      }
+      break;
+    }
+    case "wave": {
+      // 사인파 기반 움직임
+      for (let i = 0; i < n; i++) {
+        const x = bX[i];
+        const phase = x * 0.09 + localT * 2.2;
+        tX[i] = x;
+        tY[i] = bY[i] + Math.sin(phase) * 9;
+        tZ[i] = bZ[i] + Math.cos(phase * 0.8) * 16;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "explode": {
+      for (let i = 0; i < n; i++) {
+        const x = bX[i], y = bY[i], z = bZ[i] + 0.001;
+        const len = Math.hypot(x, y, z) || 1;
+        const power = 130 * (0.5 + P.rnd[i]);
+        tX[i] = x + (x / len) * power;
+        tY[i] = y + (y / len) * power * 0.8;
+        tZ[i] = z + (z / len) * power;
+        tA[i] = 1;
+      }
+      break;
+    }
+    case "fadeOut": {
+      for (let i = 0; i < n; i++) {
+        tX[i] = P.startX[i]; tY[i] = P.startY[i]; tZ[i] = P.startZ[i];
+        tA[i] = 0;
+      }
+      break;
+    }
+    case "fadeIn": {
+      for (let i = 0; i < n; i++) {
+        tX[i] = bX[i]; tY[i] = bY[i]; tZ[i] = bZ[i];
+        tA[i] = 1;
+      }
+      break;
+    }
+    default: {
+      for (let i = 0; i < n; i++) {
+        tX[i] = bX[i]; tY[i] = bY[i]; tZ[i] = bZ[i]; tA[i] = 1;
+      }
+    }
+  }
+}
+
+/* ======================= 7. 스토리 → 애니메이션 해석 =======================
+ * 문장에서 동작 키워드를 찾아 등장 순서대로 장면을 만듭니다.
+ * (한국어 + 영어 키워드를 함께 인식)
+ * ====================================================================== */
+const STORY_RULES = [
+  { type:"disperse", re:/해체|분해|부서|흩날|\bdissolve|\bbreak\s*apart/gi },
+  { type:"scatter",  re:/흩어|흩뿌|퍼져|퍼진|분산|\bscatter|\bdisperse|\bspread/gi },
+  { type:"gather",   re:/모인|모여|모은|모이|집합|중앙으로|한곳|\bgather|\bconverge|\bcome\s*together/gi },
+  { type:"align",    re:/정렬|일렬|줄지어|줄을|나란히|한\s*줄|\balign|\bline\s*up|\brows?\b/gi },
+  { type:"rise",     re:/올라|상승|떠오|위로|솟아|\brises?\b|\bascend|\bfloat\s*up|\bupward/gi },
+  { type:"fall",     re:/내려|하강|아래로|떨어|가라앉|\bfalls?\b|\bdescend|\bdrops?\b|\bdownward/gi },
+  { type:"rotate",   re:/회전|돌아|돈다|빙글|맴돌|\brotate|\bspin|\bswirl|\bturns?\b/gi },
+  { type:"expand",   re:/확대|커진|커지|넓어|팽창|벌어|\bexpand|\bgrows?\b|\bzoom\s*in/gi },
+  { type:"shrink",   re:/축소|작아|좁아|수축|오므|\bshrink|\bcontract|\bzoom\s*out/gi },
+  { type:"explode",  re:/폭발|터진|터지|튀어|\bexplode|\bburst|\bblast/gi },
+  { type:"wave",     re:/파도|물결|출렁|일렁|흔들|\bwaves?\b|\bripple|\bundulate/gi },
+  // 형태 생성: "만들어진다" 같은 서술어이거나, "이미지가 ~ 만들어진다" 처럼
+  //            대상 명사 뒤에 생성 서술어가 이어질 때만 인식한다
+  { type:"form",     re:/만들어진|만들어져|만든다|만들|형성|완성|생성|(?:형태|모양|이미지|그림|사람|얼굴|형상)[을를이가]?\s*[^\n.]{0,10}?(?:만들|만든|형성|생기|생겨|완성|이룬|이루)|\bforms?\b|\bshapes?\b|\bbuild|\bbecome/gi },
+  { type:"fadeOut",  re:/사라|소멸|희미|지워|\bfade[sd]?\s*out|\bvanish|\bdisappear/gi },
+  { type:"fadeIn",   re:/나타|드러|선명|보이기|\bfade[sd]?\s*in\b|\bappears?\b|\bemerge/gi }
+];
+
+/** 문장 하나에서 키워드가 등장한 순서대로 장면 타입 목록을 만든다 */
+function parseSentence(sentence) {
+  const found = [];
+  for (const rule of STORY_RULES) {
+    rule.re.lastIndex = 0;
+    let m;
+    while ((m = rule.re.exec(sentence)) !== null) {
+      found.push({ index: m.index, type: rule.type });
+      if (m.index === rule.re.lastIndex) rule.re.lastIndex++; // 무한 루프 방지
+    }
+  }
+  found.sort((a, b) => a.index - b.index);
+  // 같은 종류가 연달아 나오면 하나로 합친다
+  const out = [];
+  for (const f of found) {
+    if (!out.length || out[out.length - 1] !== f.type) out.push(f.type);
+  }
+  return out;
+}
+
+/** 스토리 전체 텍스트 → 장면 배열 */
+function parseStory(text) {
+  const scenes = [];
+  const sentences = String(text || "")
+    .split(/[\n.!?。]+|,\s*그리고\s*/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  for (const s of sentences) {
+    // 문맥 보정: "천천히"는 길게, "빠르게/갑자기"는 짧게
+    let durScale = 1;
+    if (/천천히|서서히|부드럽게|slowly|gently/i.test(s)) durScale = 1.5;
+    if (/빠르게|갑자기|순식간|재빨리|quickly|suddenly/i.test(s)) durScale = 0.65;
+
+    const types = parseSentence(s);
+    for (const t of types) {
+      scenes.push({
+        type: t,
+        label: (SCENE_META[t] || { label: t }).label,
+        dur: Math.round(3 * durScale * 10) / 10,
+        text: s
+      });
+    }
+  }
+
+  // 아무 키워드도 찾지 못하면 기본 시퀀스를 사용
+  if (!scenes.length) {
+    return defaultScenes();
+  }
+  // 첫 장면이 흩어진 상태가 아니면, 시작 장면(흩어진 점)을 앞에 추가한다
+  if (scenes[0].type !== "scatter" && scenes[0].type !== "disperse") {
+    scenes.unshift({ type:"scatter", label: SCENE_META.scatter.label, dur: 2, text: "시작: 흩어진 점" });
+  }
+  return scenes;
+}
+
+function defaultScenes() {
+  return [
+    { type:"scatter", label:SCENE_META.scatter.label, dur:2.5, text:"흩어진 점" },
+    { type:"align",   label:SCENE_META.align.label,   dur:3,   text:"정렬" },
+    { type:"rise",    label:SCENE_META.rise.label,    dur:3,   text:"상승" },
+    { type:"form",    label:SCENE_META.form.label,    dur:3.5, text:"형태 생성" },
+    { type:"rotate",  label:SCENE_META.rotate.label,  dur:4,   text:"변형(회전)" },
+    { type:"disperse",label:SCENE_META.disperse.label,dur:3,   text:"해체" }
+  ];
+}
+
+const DEFAULT_STORY =
+`작은 점들이 화면 중앙에 모인다.
+점들이 일렬로 정렬된다.
+천천히 위로 올라간다.
+점들이 이미지의 형태를 만든다.
+형태가 천천히 회전한다.
+점들이 파도처럼 움직인다.
+형태가 흩어지면서 새로운 이미지가 만들어진다.`;
+
+/* ======================= 8. 타임라인 =======================
+ * 장면 목록/재생 상태/현재 시간을 관리하고 하단 UI 를 그립니다.
+ * ========================================================== */
+const Timeline = {
+  scenes: [],
+  time: 0,
+  playing: false,
+  sceneIndex: -1,
+  selected: -1,
+
+  get total() {
+    let t = 0;
+    for (const s of this.scenes) t += s.dur;
+    return t;
+  },
+
+  rebuild(scenes) {
+    this.scenes = (scenes && scenes.length) ? scenes : defaultScenes();
+    this.time = 0;
+    this.sceneIndex = -1;
+    this.selected = -1;
+    this.renderTrack();
+    this.captureStart();
+    this.updateLabels();
+  },
+
+  /** 현재 좌표/투명도를 보간 시작점으로 저장 */
+  captureStart() {
+    for (let i = 0; i < P.count; i++) {
+      P.startX[i] = P.curX[i];
+      P.startY[i] = P.curY[i];
+      P.startZ[i] = P.curZ[i];
+      P.startA[i] = P.curA[i];
+    }
+  },
+
+  /** 시간(초)으로부터 장면 인덱스와 장면 내부 경과 시간을 구한다 */
+  locate(time) {
+    let acc = 0;
+    for (let i = 0; i < this.scenes.length; i++) {
+      const d = this.scenes[i].dur;
+      if (time < acc + d || i === this.scenes.length - 1) {
+        return { index: i, localT: clamp(time - acc, 0, d), start: acc };
+      }
+      acc += d;
+    }
+    return { index: 0, localT: 0, start: 0 };
+  },
+
+  setTime(t, forceCapture) {
+    const total = this.total;
+    this.time = clamp(t, 0, total);
+    const loc = this.locate(this.time);
+    if (forceCapture || loc.index !== this.sceneIndex) {
+      this.sceneIndex = loc.index;
+      this.captureStart();
+    }
+    this.updateLabels();
+  },
+
+  play()  { if (!this.scenes.length) return; this.playing = true; this._sceneTxt = null; },
+  pause() { this.playing = false; this._sceneTxt = null; },
+  stop()  {
+    this.playing = false;
+    this.time = 0;
+    this.sceneIndex = -1;
+    // 정지하면 업로드한 이미지 형태(초기 상태)로 되돌린다
+    for (let i = 0; i < P.count; i++) {
+      P.curX[i] = P.baseX[i]; P.curY[i] = P.baseY[i]; P.curZ[i] = P.baseZ[i];
+      P.curA[i] = 1;
+    }
+    this.captureStart();
+    this._sceneTxt = null;
+    this.updateLabels();
+    $("sceneTag").textContent = "정지 · 이미지 형태";
+  },
+  restart() {
+    this.time = 0;
+    this.sceneIndex = -1;
+    this.captureStart();
+    this.playing = true;
+  },
+
+  /** 매 프레임 호출: 시간 진행 + 입자 위치 보간 */
+  update(dt, globalTime) {
+    if (!this.scenes.length || !P.count) return;
+    const speed = parseFloat($("speed").value);
+    const total = this.total;
+
+    if (this.playing) {
+      this.time += dt * speed;
+      if (this.time >= total) {
+        if ($("loopPlay").checked) {
+          this.time = 0;
+          this.sceneIndex = -1;      // 다음 단계에서 새 장면으로 인식 → 시작점 재설정
+        } else {
+          this.time = total;
+          this.playing = false;
+        }
+      }
+    }
+
+    const loc = this.locate(this.time);
+    if (loc.index !== this.sceneIndex) {
+      this.sceneIndex = loc.index;
+      this.captureStart();
+    }
+    const scene = this.scenes[loc.index];
+    const e = applyEasing($("easing").value, scene.dur > 0 ? loc.localT / scene.dur : 1);
+
+    computeTargets(scene, loc.localT);
+
+    // 시작 좌표 → 목표 좌표로 부드럽게 보간
+    const n = P.count;
+    for (let i = 0; i < n; i++) {
+      P.curX[i] = P.startX[i] + (P.tgtX[i] - P.startX[i]) * e;
+      P.curY[i] = P.startY[i] + (P.tgtY[i] - P.startY[i]) * e;
+      P.curZ[i] = P.startZ[i] + (P.tgtZ[i] - P.startZ[i]) * e;
+      P.curA[i] = P.startA[i] + (P.tgtA[i] - P.startA[i]) * e;
+    }
+
+    this.applyIdleMotion(globalTime);
+    this.updateLabels();
+    this.updatePlayhead();
+  },
+
+  /** 입자 고유의 미세한 움직임(Particle Motion)을 최종 좌표에 더한다 */
+  applyIdleMotion(t) {
+    const mode = $("motion").value;
+    const n = P.count;
+    const pos = P.positions, al = P.alphas;
+    if (mode === "none") {
+      for (let i = 0; i < n; i++) {
+        pos[i*3] = P.curX[i]; pos[i*3+1] = P.curY[i]; pos[i*3+2] = P.curZ[i];
+        al[i] = P.curA[i];
+      }
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      const r = P.rnd[i] * 6.2831853;
+      let dx = 0, dy = 0, dz = 0;
+      if (mode === "float") {
+        dy = Math.sin(t * 1.1 + r) * 1.6;
+        dz = Math.cos(t * 0.9 + r) * 1.1;
+      } else if (mode === "wave") {
+        const phase = P.curX[i] * 0.07 + t * 1.7;
+        dy = Math.sin(phase) * 2.2;
+        dz = Math.cos(phase * 0.8) * 2.6;
+      } else if (mode === "orbit") {
+        dx = Math.sin(t * 1.4 + r) * 1.4;
+        dz = Math.cos(t * 1.4 + r) * 1.4;
+      }
+      pos[i*3]   = P.curX[i] + dx;
+      pos[i*3+1] = P.curY[i] + dy;
+      pos[i*3+2] = P.curZ[i] + dz;
+      al[i] = P.curA[i];
+    }
+  },
+
+  updateLabels() {
+    // 매 프레임 호출되므로 값이 바뀔 때만 DOM 을 건드린다
+    const curTxt = fmtTime(this.time);
+    if (curTxt !== this._curTxt) { this._curTxt = curTxt; $("curTime").textContent = curTxt; }
+    const totTxt = fmtTime(this.total);
+    if (totTxt !== this._totTxt) { this._totTxt = totTxt; $("totTime").textContent = totTxt; }
+
+    const idx = Math.max(0, this.sceneIndex);
+    const s = this.scenes[idx];
+    if (s) {
+      const txt = "Scene " + (idx + 1) + " · " + s.label;
+      if (txt !== this._sceneTxt) {
+        this._sceneTxt = txt;
+        $("sceneInfo").textContent = txt;
+        $("sceneTag").textContent = this.playing ? txt : ("정지 · " + s.label);
+        if (this.segEls) {
+          this.segEls.forEach((el, i) => el.classList.toggle("active", i === idx));
+        }
+      } else if (this.playing && $("sceneTag").textContent !== txt) {
+        $("sceneTag").textContent = txt;
+      }
+    }
+  },
+
+  updatePlayhead() {
+    const total = this.total || 1;
+    $("playhead").style.left = (this.time / total * 100).toFixed(3) + "%";
+  },
+
+  renderTrack() {
+    const track = $("track");
+    // 기존 세그먼트만 지우고 플레이헤드는 유지
+    track.querySelectorAll(".seg").forEach(el => el.remove());
+    const playhead = $("playhead");
+    this.segEls = [];
+    this._sceneTxt = null;
+    this.scenes.forEach((s, i) => {
+      const el = document.createElement("div");
+      el.className = "seg";
+      el.style.flexGrow = String(s.dur);
+      el.style.background = (SCENE_META[s.type] || {}).color || "#2c3850";
+      el.textContent = "S" + (i + 1) + " " + s.label;
+      el.title = "Scene " + (i + 1) + " — " + s.label + " (" + s.dur + "초)\n" + (s.text || "");
+      el.dataset.index = String(i);
+      track.insertBefore(el, playhead);
+      this.segEls.push(el);
+    });
+    this.updatePlayhead();
+  }
+};
+
+/* ======================= 9. 기본 예제 이미지 =======================
+ * 업로드 전에도 화면에 입자가 보이도록 프로그램이 직접 이미지를 그립니다.
+ * ================================================================= */
+function makeDemoImage() {
+  const c = document.createElement("canvas");
+  c.width = 640; c.height = 640;
+  const g = c.getContext("2d");
+
+  // 배경 그라데이션
+  const bg = g.createLinearGradient(0, 0, 640, 640);
+  bg.addColorStop(0, "#0b1a2b");
+  bg.addColorStop(0.5, "#123a4f");
+  bg.addColorStop(1, "#0d1024");
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 640, 640);
+
+  // 무지개색 동심원
+  for (let i = 12; i >= 1; i--) {
+    const rad = i * 24;
+    const hue = (i * 26) % 360;
+    g.beginPath();
+    g.arc(320, 300, rad, 0, Math.PI * 2);
+    g.fillStyle = "hsla(" + hue + ",78%," + (38 + i * 2) + "%,0.42)";
+    g.fill();
+  }
+
+  // 빛나는 중심
+  const glow = g.createRadialGradient(300, 275, 5, 320, 300, 200);
+  glow.addColorStop(0, "rgba(255,255,255,0.95)");
+  glow.addColorStop(0.35, "rgba(140,230,255,0.45)");
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = glow;
+  g.fillRect(0, 0, 640, 640);
+
+  // 텍스트
+  g.fillStyle = "#ffffff";
+  g.font = "bold 78px 'Segoe UI', sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText("PIXEL", 320, 300);
+  g.font = "600 30px 'Segoe UI', sans-serif";
+  g.fillStyle = "#9ff7ff";
+  g.fillText("CIRCULAR 3D", 320, 370);
+  g.font = "500 20px 'Segoe UI', sans-serif";
+  g.fillStyle = "#cfe8ee";
+  g.fillText("이미지를 업로드해 보세요", 320, 560);
+
+  return c;
+}
+
+/* ======================= 10. 이미지 업로드 처리 ======================= */
+function loadImageFile(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) {
+    alert("이미지 파일만 사용할 수 있습니다. (JPG, PNG, WebP, GIF 등)");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      sourceImage = img;
+      sourceLabel = file.name.length > 22 ? file.name.slice(0, 20) + "…" : file.name;
+      $("preview").src = img.src;
+      $("previewWrap").style.display = "block";
+      buildParticles();
+      Timeline.stop();
+    };
+    img.onerror = () => alert("이미지를 읽을 수 없습니다. 다른 파일을 사용해 주세요.");
+    img.src = ev.target.result;
+  };
+  reader.onerror = () => alert("파일을 읽는 중 오류가 발생했습니다.");
+  reader.readAsDataURL(file);
+}
+
+function useDemoImage() {
+  const demo = makeDemoImage();
+  sourceImage = demo;
+  sourceLabel = "기본 예제";
+  try { $("preview").src = demo.toDataURL("image/png"); $("previewWrap").style.display = "block"; }
+  catch (e) { $("previewWrap").style.display = "none"; }
+  buildParticles();
+  Timeline.stop();
+}
+
+function showError(msg) {
+  const box = $("errorBox");
+  box.style.display = "flex";
+  box.innerHTML = msg;
+}
+
+/* ======================= 11. 마우스 / 터치 인터랙션 =======================
+ * 드래그 = 회전, 휠 = 확대/축소, 우클릭(또는 Shift)드래그 = 이동, 더블클릭 = 초기화
+ * 터치: 한 손가락 = 회전, 두 손가락 = 핀치 확대/축소 + 이동
+ * ==================================================================== */
+const canvas = $("gl");
+const pointers = new Map();     // 현재 눌려 있는 포인터들
+let dragMode = null;            // "rotate" | "pan" | "pinch"
+let lastX = 0, lastY = 0, lastPinchDist = 0, lastPinchCx = 0, lastPinchCy = 0;
+
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    dragMode = "pinch";
+    lastPinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    lastPinchCx = (a.x + b.x) / 2;
+    lastPinchCy = (a.y + b.y) / 2;
+  } else {
+    dragMode = (e.button === 2 || e.button === 1 || e.shiftKey) ? "pan" : "rotate";
+    lastX = e.clientX; lastY = e.clientY;
+  }
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (dragMode === "pinch" && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    if (lastPinchDist > 0) {
+      Camera.radius *= clamp(lastPinchDist / Math.max(dist, 1), 0.5, 2);
+    }
+    Camera.pan(cx - lastPinchCx, cy - lastPinchCy, canvas.clientHeight);
+    lastPinchDist = dist; lastPinchCx = cx; lastPinchCy = cy;
+    return;
+  }
+
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  if (dragMode === "rotate") {
+    Camera.theta -= dx * 0.006;
+    Camera.phi   -= dy * 0.006;
+  } else if (dragMode === "pan") {
+    Camera.pan(dx, dy, canvas.clientHeight);
+  }
+});
+
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) dragMode = null;
+  else if (pointers.size === 1) {
+    dragMode = "rotate";
+    const p = [...pointers.values()][0];
+    lastX = p.x; lastY = p.y;
+  }
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  Camera.radius *= Math.exp(clamp(e.deltaY, -160, 160) * 0.0012);
+}, { passive: false });
+
+canvas.addEventListener("dblclick", () => Camera.reset());
+
+/* ======================= 12. UI 이벤트 연결 ======================= */
+let rebuildQueued = false;
+function queueRebuild() {
+  // 슬라이더를 빠르게 움직여도 프레임당 한 번만 다시 만들도록 예약
+  if (rebuildQueued) return;
+  rebuildQueued = true;
+  requestAnimationFrame(() => { rebuildQueued = false; buildParticles(); });
+}
+
+/** 정지 상태라면 화면에 바로 반영되도록 현재 좌표를 이미지 형태로 맞춘다 */
+function syncIfIdle() {
+  if (!Timeline.playing && Timeline.time <= 0.0001) {
+    for (let i = 0; i < P.count; i++) {
+      P.curX[i] = P.baseX[i]; P.curY[i] = P.baseY[i]; P.curZ[i] = P.baseZ[i];
+    }
+    Timeline.captureStart();
+  }
+}
+
+$("spacing").addEventListener("input", (e) => {
+  $("vSpacing").textContent = e.target.value + " px";
+  queueRebuild();
+});
+$("size").addEventListener("input", (e) => {
+  $("vSize").textContent = parseFloat(e.target.value).toFixed(2);
+});
+$("opacity").addEventListener("input", (e) => {
+  $("vOpacity").textContent = parseFloat(e.target.value).toFixed(2);
+});
+$("depth").addEventListener("input", (e) => {
+  $("vDepth").textContent = e.target.value;
+  refreshBaseShape(); syncIfIdle();
+});
+$("height").addEventListener("input", (e) => {
+  $("vHeight").textContent = e.target.value;
+  refreshBaseShape(); syncIfIdle();
+});
+$("speed").addEventListener("input", (e) => {
+  $("vSpeed").textContent = parseFloat(e.target.value).toFixed(2) + "x";
+});
+
+[["btnPreset1",2],["btnPreset2",5],["btnPreset3",10],["btnPreset4",15],["btnPreset5",20]]
+  .forEach(([id, v]) => $(id).addEventListener("click", () => {
+    $("spacing").value = v;
+    $("vSpacing").textContent = v + " px";
+    buildParticles();
+  }));
+
+// 이미지 업로드 (버튼 + 드래그 앤 드롭)
+$("dropZone").addEventListener("click", () => $("fileInput").click());
+$("fileInput").addEventListener("change", (e) => {
+  if (e.target.files && e.target.files[0]) loadImageFile(e.target.files[0]);
+  e.target.value = "";
+});
+["dragenter","dragover"].forEach(ev =>
+  $("dropZone").addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    $("dropZone").classList.add("dragover");
+  }));
+["dragleave","drop"].forEach(ev =>
+  $("dropZone").addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    $("dropZone").classList.remove("dragover");
+  }));
+$("dropZone").addEventListener("drop", (e) => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadImageFile(f);
+});
+// 창 전체에 떨어뜨려도 동작하도록
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadImageFile(f);
+});
+$("btnDemo").addEventListener("click", useDemoImage);
+
+// 스토리
+$("btnStory").addEventListener("click", () => {
+  const scenes = parseStory($("story").value);
+  Timeline.rebuild(scenes);
+  Timeline.playing = true;
+  $("sceneTag").textContent = "Scene 1 · " + scenes[0].label;
+});
+$("btnStoryReset").addEventListener("click", () => {
+  $("story").value = DEFAULT_STORY;
+  Timeline.rebuild(parseStory(DEFAULT_STORY));
+});
+$("btnStoryClear").addEventListener("click", () => { $("story").value = ""; });
+
+// 재생 제어
+$("btnPlay").addEventListener("click", () => Timeline.play());
+$("btnPause").addEventListener("click", () => Timeline.pause());
+$("btnStop").addEventListener("click", () => Timeline.stop());
+$("btnRestart").addEventListener("click", () => Timeline.restart());
+
+// 타임라인 클릭 / 드래그 스크럽
+let scrubbing = false, scrubMoved = false;
+function timeFromEvent(e) {
+  const r = $("track").getBoundingClientRect();
+  const f = clamp((e.clientX - r.left) / r.width, 0, 1);
+  return f * Timeline.total;
+}
+$("track").addEventListener("pointerdown", (e) => {
+  scrubbing = true; scrubMoved = false;
+  $("track").setPointerCapture(e.pointerId);
+  Timeline.setTime(timeFromEvent(e), true);
+});
+$("track").addEventListener("pointermove", (e) => {
+  if (!scrubbing) return;
+  scrubMoved = true;
+  Timeline.setTime(timeFromEvent(e), false);
+  Timeline.updatePlayhead();
+});
+$("track").addEventListener("pointerup", (e) => {
+  if (!scrubbing) return;
+  scrubbing = false;
+  if (!scrubMoved) {
+    // 클릭한 위치의 장면을 찾아 그 장면의 시작 지점으로 이동한다
+    const idx = Timeline.locate(timeFromEvent(e)).index;
+    let acc = 0;
+    for (let i = 0; i < idx; i++) acc += Timeline.scenes[i].dur;
+    Timeline.setTime(acc, true);
+    Timeline.selected = idx;
+    showSceneEditor(idx);
+  }
+  Timeline.updatePlayhead();
+});
+
+function showSceneEditor(idx) {
+  const s = Timeline.scenes[idx];
+  if (!s) return;
+  $("sceneEditLabel").textContent = "Scene " + (idx + 1) + " (" + s.label + ") 길이(초)";
+  $("sceneDur").value = s.dur;
+}
+$("btnSceneApply").addEventListener("click", () => {
+  const idx = Timeline.selected;
+  if (idx < 0 || !Timeline.scenes[idx]) return;
+  const v = clamp(parseFloat($("sceneDur").value) || 3, 0.5, 60);
+  Timeline.scenes[idx].dur = v;
+  Timeline.renderTrack();
+  Timeline.setTime(Timeline.time, true);
+  showSceneEditor(idx);
+});
+
+// 뷰 초기화
+$("btnResetView").addEventListener("click", () => Camera.reset());
+$("btnResetAll").addEventListener("click", () => {
+  const defaults = { spacing:10, size:1, depth:24, height:0, opacity:1, speed:1 };
+  for (const k in defaults) $(k).value = defaults[k];
+  $("vSpacing").textContent = "10 px";
+  $("vSize").textContent = "1.00";
+  $("vDepth").textContent = "24";
+  $("vHeight").textContent = "0";
+  $("vOpacity").textContent = "1.00";
+  $("vSpeed").textContent = "1.00x";
+  $("easing").value = "easeInOut";
+  $("motion").value = "float";
+  $("autoRotate").checked = false;
+  $("loopPlay").checked = true;
+  $("story").value = DEFAULT_STORY;
+  Camera.reset();
+  buildParticles();
+  Timeline.rebuild(parseStory(DEFAULT_STORY));
+  Timeline.stop();
+});
+
+// 키보드 단축키 (스페이스 = 재생/일시정지)
+window.addEventListener("keydown", (e) => {
+  if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (e.code === "Space") {
+    e.preventDefault();
+    Timeline.playing ? Timeline.pause() : Timeline.play();
+  }
+});
+
+/* ======================= 13. 리사이즈 & 메인 루프 ======================= */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.floor(canvas.clientWidth  * dpr));
+  const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+  }
+}
+window.addEventListener("resize", resize);
+
+let lastFrame = performance.now();
+let fpsAcc = 0, fpsCount = 0, fpsTimer = 0;
+const drawState = {
+  count: 0, positions: null, alphas: null,
+  projScale: 1, sizeScale: 1, globalAlpha: 1
+};
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!Renderer.ok) return;
+
+  let dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  if (!isFinite(dt) || dt < 0) dt = 0;
+  dt = Math.min(dt, 0.05);            // 탭 전환 등으로 인한 큰 점프 방지
+  const globalTime = now / 1000;
+
+  // FPS 표시
+  fpsAcc += dt; fpsCount++;
+  if (fpsAcc - fpsTimer > 0.5) {
+    $("hudFps").textContent = Math.round(fpsCount / (fpsAcc - fpsTimer));
+    fpsTimer = fpsAcc; fpsCount = 0;
+  }
+
+  resize();
+  if ($("autoRotate").checked) Camera.theta += dt * 0.25;
+
+  Timeline.update(dt, globalTime);
+
+  const aspect = canvas.width / Math.max(1, canvas.height);
+  Camera.update(aspect);
+
+  drawState.count = P.count;
+  drawState.positions = P.positions;
+  drawState.alphas = P.alphas;
+  drawState.projScale = canvas.height / (2 * Math.tan(Camera.fov / 2));
+  drawState.sizeScale = parseFloat($("size").value);
+  drawState.globalAlpha = parseFloat($("opacity").value);
+  Renderer.draw(drawState);
+}
+
+/* ======================= 14. 시작 ======================= */
+function init() {
+  $("story").value = DEFAULT_STORY;
+  resize();
+
+  if (!Renderer.init(canvas)) {
+    showError("이 브라우저에서는 WebGL 을 사용할 수 없습니다.<br>" +
+              "최신 크롬·엣지·파이어폭스에서 열거나 하드웨어 가속을 켜 주세요.");
+    return;
+  }
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    showError("그래픽 컨텍스트가 손실되었습니다. 페이지를 새로고침해 주세요.");
+  });
+
+  Camera.saveDefaults();
+  useDemoImage();                       // 업로드 전에도 기본 예제 입자 표시
+  Timeline.rebuild(parseStory(DEFAULT_STORY));
+  Timeline.stop();
+  requestAnimationFrame(frame);
+}
+
+try {
+  init();
+} catch (err) {
+  console.error(err);
+  showError("초기화 중 오류가 발생했습니다.<br><small>" + (err && err.message) + "</small>");
+}
+</script>
+</body>
+</html>
