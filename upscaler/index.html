@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>2K·4K·8K 업스케일러</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 작업대형 2열(원본 | 출력 설정) 위에 결과·확대 비교 패널이 가로로 걸쳐짐. 좁은 화면에선 1열. */
+:root {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --ink: #141926;
+  --muted: #586276;
+  --line: #d6dce7;
+  --accent: #2b45cf;
+  --accent-ink: #ffffff;
+  --accent-soft: #e5e9ff;
+  --warn: #9a5600;
+  --ok: #1b7546;
+  --check-a: #e3e7ef;
+  --check-b: #f7f8fb;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1017; --surface: #151a24; --ink: #e7eaf2; --muted: #99a2b7; --line: #283043;
+    --accent: #8396ff; --accent-ink: #0d1017; --accent-soft: #1d2546;
+    --warn: #f0a54a; --ok: #5ccf90; --check-a: #1c2230; --check-b: #232a3a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1017; --surface: #151a24; --ink: #e7eaf2; --muted: #99a2b7; --line: #283043;
+  --accent: #8396ff; --accent-ink: #0d1017; --accent-soft: #1d2546;
+  --warn: #f0a54a; --ok: #5ccf90; --check-a: #1c2230; --check-b: #232a3a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.6 var(--font-ui);
+  padding-inline: 16px; padding-block: 24px 48px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.25; }
+h1 { font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.1rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 64ch; }
+.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.span { grid-column: 1 / -1; }
+@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+/* 원본 */
+.drop {
+  display: grid; place-items: center; text-align: center; gap: 4px;
+  border: 1.5px dashed var(--line); border-radius: 8px; padding: 18px 12px;
+  cursor: pointer; color: var(--muted); transition: border-color .15s, background .15s;
+}
+.drop b { color: var(--ink); font-weight: 600; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.srcfig { margin: 0; display: grid; gap: 8px; }
+.stage {
+  border-radius: 6px; overflow: hidden; display: grid; place-items: center; min-height: 160px;
+  background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 16px 16px;
+}
+.stage img { display: block; max-height: 340px; object-fit: contain; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 0.86rem; color: var(--muted); }
+.meta .name { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.tag { font-size: 0.72rem; font-weight: 600; letter-spacing: .04em; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+
+/* 크기 비교 도식: 8K 프레임을 100%로 놓고 각 해상도를 실제 비율로 겹쳐 그림 */
+.scale-map { position: relative; width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); overflow: hidden; }
+.scale-map .box { position: absolute; left: 0; bottom: 0; border: 1.5px solid var(--muted); border-left: 0; border-bottom: 0; }
+.scale-map .box span { position: absolute; right: 4px; top: 2px; font: 500 0.7rem var(--font-data); color: var(--muted); white-space: nowrap; }
+.scale-map .box.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.scale-map .box.on span { color: var(--accent); }
+.scale-map .box.src { border: 0; background: var(--ink); opacity: .85; }
+.scale-map .box.src span { right: auto; left: calc(100% + 4px); top: auto; bottom: 0; color: var(--ink); }
+
+.tiers { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 480px) { .tiers { grid-template-columns: minmax(0, 1fr); } }
+.tier { position: relative; display: block; cursor: pointer; }
+.tier input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.tier-body { display: grid; gap: 2px; height: 100%; border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 12px; transition: border-color .15s, background .15s; }
+.tier-body b { font-size: 1.35rem; line-height: 1.1; font-weight: 700; }
+.tier-body small { color: var(--muted); font-size: 0.78rem; }
+.tier-body .out { font-family: var(--font-data); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.tier-body .out.down { color: var(--warn); }
+.tier input:checked + .tier-body { border-color: var(--accent); background: var(--accent-soft); }
+.tier input:focus-visible + .tier-body { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.field { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.field > legend, .field > label.lbl { font-size: 0.86rem; font-weight: 600; padding: 0; }
+.radios { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.9rem; }
+.radios label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+.row > .field { flex: 1 1 160px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.hint { font-size: 0.8rem; color: var(--muted); margin: 0; }
+
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; }
+button:hover { border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 10px 18px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.progress { display: grid; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
+.progress span { font-size: 0.8rem; color: var(--muted); }
+.msg { margin: 0; font-size: 0.86rem; }
+.msg.err { color: var(--warn); }
+
+/* 결과 */
+.results { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.empty { color: var(--muted); margin: 0; font-size: 0.92rem; }
+.card { border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.card.active { border-color: var(--accent); }
+.card .thumb { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 0; cursor: crosshair; background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 12px 12px; aspect-ratio: 16 / 10; }
+.card .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.card .thumb .dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1.5px #000; pointer-events: none; }
+.card .info { padding: 10px 12px; display: grid; gap: 8px; }
+.card .info header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card .info b { font-size: 1.1rem; }
+.card .info .num { font-size: 0.8rem; color: var(--muted); }
+
+.compare { display: grid; gap: 10px; }
+.compare-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
+.panes { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 640px) { .panes { grid-template-columns: minmax(0, 1fr); } }
+.pane { display: grid; gap: 6px; min-width: 0; }
+.pane .cap { font-size: 0.8rem; color: var(--muted); }
+.loupe { position: relative; height: 300px; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); cursor: grab; touch-action: none; background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0 0 / 12px 12px; }
+.loupe:active { cursor: grabbing; }
+.loupe img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+.loupe.pixelated img { image-rendering: pixelated; }
+
+.notes { font-size: 0.84rem; color: var(--muted); display: grid; gap: 6px; }
+.notes p { margin: 0; max-width: 80ch; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-size: 0.9rem; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>2K·4K·8K 업스케일러</h1>
+    <p class="lede">이미지를 넣고 원하는 해상도를 고르면 Lanczos3 보간으로 키운 뒤 파일로 저장합니다. 모든 처리는 이 브라우저 안에서 이루어지며 이미지는 어디에도 업로드되지 않습니다.</p>
+  </header>
+
+  <main class="grid">
+    <section class="panel" aria-labelledby="h-src">
+      <h2 id="h-src">원본 이미지</h2>
+      <label class="drop" id="drop">
+        <input class="visually-hidden" type="file" id="file" accept="image/*">
+        <b>이미지를 끌어다 놓거나 눌러서 선택</b>
+        <span>붙여넣기(Ctrl+V / ⌘V)도 됩니다 · JPG, PNG, WebP, GIF, BMP</span>
+      </label>
+      <figure class="srcfig">
+        <div class="stage"><img id="srcImg" alt="원본 이미지 미리보기"></div>
+        <figcaption class="meta">
+          <span class="name" id="srcName">—</span>
+          <span class="num" id="srcDims">—</span>
+          <span class="tag" id="sampleTag">예시 이미지</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="panel" aria-labelledby="h-out">
+      <h2 id="h-out">출력 해상도</h2>
+      <div class="scale-map" id="scaleMap" aria-hidden="true"></div>
+      <div class="tiers" id="tiers" role="group" aria-label="출력 해상도 선택"></div>
+
+      <fieldset class="field">
+        <legend>맞춤 방식</legend>
+        <div class="radios">
+          <label><input type="radio" name="mode" id="mode-fit" value="fit" checked> 16:9 화면 안에 맞춤</label>
+          <label><input type="radio" name="mode" id="mode-long" value="long"> 긴 변을 기준 길이에 맞춤</label>
+        </div>
+        <p class="hint" id="modeHint"></p>
+      </fieldset>
+
+      <div class="row">
+        <div class="field">
+          <label class="lbl" for="sharpen">선명도 보정 <span class="num" id="sharpenVal">35%</span></label>
+          <input type="range" id="sharpen" min="0" max="100" step="5" value="35">
+        </div>
+        <div class="field">
+          <label class="lbl" for="format">저장 형식</label>
+          <select id="format">
+            <option value="image/png">PNG (무손실)</option>
+            <option value="image/jpeg">JPEG (품질 92)</option>
+            <option value="image/webp">WebP (품질 92)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="run" type="button">업스케일 시작</button>
+        <button id="cancel" type="button" hidden>취소</button>
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><i id="barFill"></i></div>
+          <span id="progText"></span>
+        </div>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </section>
+
+    <section class="panel span" aria-labelledby="h-res">
+      <h2 id="h-res">결과</h2>
+      <p class="empty" id="empty">선택한 해상도로 업스케일하면 여기에 결과가 나타납니다. 결과 미리보기를 누르면 그 위치를 아래에서 확대해 비교할 수 있습니다.</p>
+      <div class="results" id="results"></div>
+
+      <div class="compare" id="compare" hidden>
+        <div class="compare-head">
+          <h3 id="compareTitle">확대 비교</h3>
+          <span class="hint">출력 픽셀 1:1 크기 · 끌어서 위치 이동</span>
+        </div>
+        <div class="panes">
+          <div class="pane">
+            <span class="cap">단순 확대 (최근접 픽셀)</span>
+            <div class="loupe pixelated" id="loupeA"><img id="loupeAImg" alt="단순 확대 비교 화면"></div>
+          </div>
+          <div class="pane">
+            <span class="cap">업스케일 결과 (Lanczos3 + 선명도 보정)</span>
+            <div class="loupe" id="loupeB"><img id="loupeBImg" alt="업스케일 결과 비교 화면"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="notes">
+    <p>해상도 기준: 2K = 2560×1440 (QHD), 4K = 3840×2160 (UHD), 8K = 7680×4320. 세로 이미지는 가로·세로를 바꿔 적용합니다.</p>
+    <p>8K 한 장은 약 3,300만 화소로, 처리 중 1GB 안팎의 메모리를 씁니다. 휴대폰 브라우저(특히 iOS Safari)는 캔버스 크기 제한 때문에 8K 저장에 실패할 수 있으니 PC에서 사용하세요.</p>
+    <p>이 도구는 고품질 보간 방식입니다. 계단 현상 없이 매끄럽게 키워 주지만, 원본에 없는 디테일을 새로 그려 넣는 AI 업스케일과는 다릅니다.</p>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script type="text/js-worker" id="workerSrc">
+"use strict";
+// Lanczos3 커널
+function lanczos(x) {
+  if (x === 0) return 1;
+  if (x <= -3 || x >= 3) return 0;
+  const px = Math.PI * x;
+  return 3 * Math.sin(px) * Math.sin(px / 3) / (px * px);
+}
+// 한 축에 대한 (원본 인덱스, 가중치) 표
+function weights(srcN, dstN) {
+  const scale = dstN / srcN;
+  const fs = Math.min(1, scale);          // 축소 시 커널을 넓혀 앨리어싱 방지
+  const support = 3 / fs;
+  const taps = Math.ceil(support) * 2 + 1;
+  const idx = new Int32Array(dstN * taps);
+  const w = new Float32Array(dstN * taps);
+  for (let i = 0; i < dstN; i++) {
+    const center = (i + 0.5) / scale - 0.5;
+    const start = Math.floor(center - support) + 1;
+    let sum = 0;
+    for (let t = 0; t < taps; t++) {
+      const j = start + t;
+      const v = lanczos((j - center) * fs);
+      idx[i * taps + t] = j < 0 ? 0 : j >= srcN ? srcN - 1 : j;
+      w[i * taps + t] = v;
+      sum += v;
+    }
+    for (let t = 0; t < taps; t++) w[i * taps + t] /= sum;
+  }
+  return { idx, w, taps };
+}
+// 원본 크기에서 3x3 가우시안 언샵 마스크 (업스케일 전에 적용하므로 결과 배율에 비례한 반경이 됨)
+function sharpen(p, w, h, amount) {
+  const out = new Uint8ClampedArray(p.length);
+  for (let y = 0; y < h; y++) {
+    const r0 = Math.max(y - 1, 0) * w * 4, r1 = y * w * 4, r2 = Math.min(y + 1, h - 1) * w * 4;
+    for (let x = 0; x < w; x++) {
+      const c0 = Math.max(x - 1, 0) * 4, c1 = x * 4, c2 = Math.min(x + 1, w - 1) * 4;
+      for (let c = 0; c < 3; c++) {
+        const center = p[r1 + c1 + c];
+        const blur = (p[r0 + c0 + c] + 2 * p[r0 + c1 + c] + p[r0 + c2 + c]
+          + 2 * p[r1 + c0 + c] + 4 * center + 2 * p[r1 + c2 + c]
+          + p[r2 + c0 + c] + 2 * p[r2 + c1 + c] + p[r2 + c2 + c]) / 16;
+        out[r1 + c1 + c] = center + amount * (center - blur);
+      }
+      out[r1 + c1 + 3] = p[r1 + c1 + 3];
+    }
+  }
+  return out;
+}
+function resize(px, sw, sh, dw, dh, progress) {
+  const FIX = 32; // 중간 버퍼는 Int16 고정소수점(1/32)으로 메모리 절반
+  const H = weights(sw, dw), V = weights(sh, dh);
+  const tmp = new Int16Array(sh * dw * 4);
+  const total = sh + dh;
+  let lastReport = 0;
+  for (let y = 0; y < sh; y++) {
+    const rowS = y * sw * 4, rowT = y * dw * 4;
+    for (let x = 0; x < dw; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      const base = x * H.taps;
+      for (let t = 0; t < H.taps; t++) {
+        const k = H.w[base + t];
+        if (k === 0) continue;
+        const j = rowS + H.idx[base + t] * 4;
+        r += px[j] * k; g += px[j + 1] * k; b += px[j + 2] * k; a += px[j + 3] * k;
+      }
+      const o = rowT + x * 4;
+      tmp[o] = Math.round(r * FIX); tmp[o + 1] = Math.round(g * FIX);
+      tmp[o + 2] = Math.round(b * FIX); tmp[o + 3] = Math.round(a * FIX);
+    }
+    if (y - lastReport > 32) { lastReport = y; progress(y / total); }
+  }
+  const out = new Uint8ClampedArray(dw * dh * 4);
+  const rowLen = dw * 4;
+  const acc = new Float32Array(rowLen);
+  lastReport = 0;
+  for (let y = 0; y < dh; y++) {
+    acc.fill(0);
+    const base = y * V.taps;
+    for (let t = 0; t < V.taps; t++) {
+      const k = V.w[base + t];
+      if (k === 0) continue;
+      const off = V.idx[base + t] * rowLen;
+      for (let i = 0; i < rowLen; i++) acc[i] += tmp[off + i] * k;
+    }
+    const o = y * rowLen;
+    for (let i = 0; i < rowLen; i++) out[o + i] = acc[i] / FIX;
+    if (y - lastReport > 32) { lastReport = y; progress((sh + y) / total); }
+  }
+  return out;
+}
+self.onmessage = async (e) => {
+  const { jobId, src, sw, sh, dw, dh, amount, mime, quality } = e.data;
+  const progress = (p) => self.postMessage({ type: "progress", jobId, p });
+  try {
+    let px = new Uint8ClampedArray(src);
+    let hasAlpha = false;
+    for (let i = 3; i < px.length; i += 4) if (px[i] !== 255) { hasAlpha = true; break; }
+    if (hasAlpha) {
+      for (let i = 0; i < px.length; i += 4) {
+        const a = px[i + 3] / 255;
+        px[i] *= a; px[i + 1] *= a; px[i + 2] *= a;
+      }
+    }
+    if (amount > 0) px = sharpen(px, sw, sh, amount);
+    const out = resize(px, sw, sh, dw, dh, progress);
+    px = null;
+    if (hasAlpha) {
+      for (let i = 0; i < out.length; i += 4) {
+        const a = out[i + 3];
+        if (a > 0 && a < 255) {
+          const f = 255 / a;
+          out[i] *= f; out[i + 1] *= f; out[i + 2] *= f;
+        }
+      }
+    }
+    progress(1);
+    if (typeof OffscreenCanvas !== "undefined") {
+      self.postMessage({ type: "encoding", jobId });
+      let canvas = new OffscreenCanvas(dw, dh);
+      canvas.getContext("2d").putImageData(new ImageData(out, dw, dh), 0, 0);
+      if (mime === "image/jpeg" && hasAlpha) {
+        const flat = new OffscreenCanvas(dw, dh);
+        const fctx = flat.getContext("2d");
+        fctx.fillStyle = "#ffffff";
+        fctx.fillRect(0, 0, dw, dh);
+        fctx.drawImage(canvas, 0, 0);
+        canvas = flat;
+      }
+      const blob = await canvas.convertToBlob({ type: mime, quality });
+      self.postMessage({ type: "done", jobId, blob });
+    } else {
+      self.postMessage({ type: "pixels", jobId, pixels: out.buffer, hasAlpha }, [out.buffer]);
+    }
+  } catch (err) {
+    const oom = err instanceof RangeError || /memory|allocation/i.test(String(err && err.message));
+    self.postMessage({ type: "error", jobId, oom, message: String(err && err.message || err) });
+  }
+};
+</script>
+
+<script>
+"use strict";
+const PRESETS = [
+  { id: "2k", label: "2K", std: "QHD", w: 2560, h: 1440 },
+  { id: "4k", label: "4K", std: "UHD", w: 3840, h: 2160 },
+  { id: "8k", label: "8K", std: "UHD-2", w: 7680, h: 4320 },
+];
+const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  src: null,            // { name, w, h, url, bitmap, sample }
+  selected: new Set(["4k"]),
+  mode: "fit",
+  results: new Map(),   // presetId -> { blob, url, w, h, mime, srcKey }
+  active: null,
+  focus: { x: 0.5, y: 0.5 },
+  busy: false,
+  jobSeq: 0,
+};
+
+// 아티팩트 뷰어에서는 downloads 기능으로 저장하고, 그 밖(로컬 파일·일반 웹)에서는 <a download>로 저장
+const downloadsReady = (window.claude && typeof window.claude.use === "function")
+  ? Promise.resolve(window.claude.use("downloads")).catch(() => null)
+  : Promise.resolve(null);
+
+const fmtInt = (n) => n.toLocaleString("ko-KR");
+const fmtMP = (w, h) => (w * h / 1e6).toFixed(1) + " MP";
+const fmtSize = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+
+function targetSize(p, w, h, mode) {
+  const landscape = w >= h;
+  const W = landscape ? p.w : p.h, H = landscape ? p.h : p.w;
+  const s = mode === "fit" ? Math.min(W / w, H / h) : Math.max(W, H) / Math.max(w, h);
+  return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)), s };
+}
+
+let toastTimer;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+function setMsg(text, isErr) {
+  $("msg").textContent = text || "";
+  $("msg").className = "msg" + (isErr ? " err" : "");
+}
+
+/* ---------- 원본 불러오기 ---------- */
+function makeSample() {
+  // 예시용 저해상도 이미지(640×360): 업스케일 차이가 잘 보이도록 선·글자·곡선을 섞음
+  const c = document.createElement("canvas");
+  c.width = 640; c.height = 360;
+  const g = c.getContext("2d");
+  const sky = g.createLinearGradient(0, 0, 0, 360);
+  sky.addColorStop(0, "#1f3b73"); sky.addColorStop(0.55, "#e9895b"); sky.addColorStop(1, "#f6c27a");
+  g.fillStyle = sky; g.fillRect(0, 0, 640, 360);
+  g.fillStyle = "#fff3d6"; g.beginPath(); g.arc(470, 190, 46, 0, Math.PI * 2); g.fill();
+  const ridge = (color, base, amp, seed) => {
+    g.fillStyle = color; g.beginPath(); g.moveTo(0, 360);
+    for (let x = 0; x <= 640; x += 8) g.lineTo(x, base - amp * (Math.sin(x / 47 + seed) * 0.6 + Math.sin(x / 19 + seed * 2) * 0.25));
+    g.lineTo(640, 360); g.fill();
+  };
+  ridge("#6d4a63", 250, 40, 1); ridge("#3b2c48", 285, 32, 4); ridge("#1b1a2c", 320, 22, 7);
+  g.strokeStyle = "rgba(255,255,255,.65)"; g.lineWidth = 1;
+  for (let i = 0; i < 9; i++) { g.beginPath(); g.moveTo(40 + i * 7, 40); g.lineTo(40 + i * 7 + 60, 130); g.stroke(); }
+  // 드론 실루엣
+  g.save(); g.translate(250, 120); g.fillStyle = "#111522"; g.strokeStyle = "#111522"; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(-34, -12); g.lineTo(34, 12); g.moveTo(34, -12); g.lineTo(-34, 12); g.stroke();
+  g.fillRect(-10, -7, 20, 14);
+  for (const [x, y] of [[-34, -12], [34, 12], [34, -12], [-34, 12]]) { g.beginPath(); g.ellipse(x, y - 4, 15, 3, 0, 0, Math.PI * 2); g.fill(); }
+  g.restore();
+  g.fillStyle = "#ffffff"; g.font = "600 22px system-ui, sans-serif"; g.fillText("SAMPLE 640 × 360", 24, 336);
+  g.font = "11px system-ui, sans-serif"; g.fillText("작은 글자도 계단 현상 없이 커지는지 확인해 보세요", 360, 336);
+  return c;
+}
+
+async function setSourceFromCanvas(canvas, name, sample) {
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+  const bitmap = await createImageBitmap(canvas);
+  useSource({ name, w: canvas.width, h: canvas.height, url: URL.createObjectURL(blob), bitmap, sample });
+}
+
+async function loadFile(file) {
+  if (!file) return;
+  if (state.busy) { toast("처리 중에는 이미지를 바꿀 수 없습니다"); return; }
+  if (file.type && !file.type.startsWith("image/")) { setMsg("이미지 파일이 아닙니다. JPG, PNG, WebP 같은 이미지를 넣어 주세요.", true); return; }
+  try {
+    const bitmap = await createImageBitmap(file);
+    useSource({ name: (file.name || "붙여넣은 이미지").replace(/\.[^.]+$/, ""), w: bitmap.width, h: bitmap.height, url: URL.createObjectURL(file), bitmap, sample: false });
+    setMsg("");
+  } catch {
+    setMsg("이 이미지를 읽지 못했습니다. HEIC 등 브라우저가 지원하지 않는 형식이면 JPG나 PNG로 바꿔서 넣어 주세요.", true);
+  }
+}
+
+function useSource(src) {
+  if (state.src) { URL.revokeObjectURL(state.src.url); state.src.bitmap.close?.(); }
+  for (const r of state.results.values()) URL.revokeObjectURL(r.url);
+  state.results.clear();
+  state.active = null;
+  state.focus = { x: 0.5, y: 0.5 };
+  state.src = src;
+  $("srcImg").src = src.url;
+  $("srcName").textContent = src.name;
+  $("srcDims").textContent = `${fmtInt(src.w)} × ${fmtInt(src.h)} · ${fmtMP(src.w, src.h)}`;
+  $("sampleTag").hidden = !src.sample;
+  $("loupeAImg").src = src.url;
+  renderTiers();
+  renderResults();
+}
+
+function srcPixels() {
+  const { w, h, bitmap } = state.src;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.drawImage(bitmap, 0, 0);
+  return g.getImageData(0, 0, w, h).data;
+}
+
+/* ---------- 설정 ---------- */
+function renderTiers() {
+  const box = $("tiers");
+  box.innerHTML = "";
+  for (const p of PRESETS) {
+    const label = document.createElement("label");
+    label.className = "tier";
+    const input = document.createElement("input");
+    input.type = "checkbox"; input.id = "tier-" + p.id; input.value = p.id;
+    input.checked = state.selected.has(p.id);
+    input.addEventListener("change", () => {
+      input.checked ? state.selected.add(p.id) : state.selected.delete(p.id);
+      renderScaleMap(); updateRunButton();
+    });
+    const body = document.createElement("span");
+    body.className = "tier-body";
+    const t = state.src ? targetSize(p, state.src.w, state.src.h, state.mode) : null;
+    body.innerHTML = `<b>${p.label}</b><small>${p.std} ${p.w}×${p.h}</small>`;
+    const out = document.createElement("span");
+    out.className = "out" + (t && t.s < 1 ? " down" : "");
+    out.textContent = t ? `${t.w}×${t.h} (×${t.s.toFixed(1)})` : "";
+    if (t && t.s < 1) out.title = "원본이 이 해상도보다 커서 축소됩니다";
+    body.appendChild(out);
+    label.append(input, body);
+    box.appendChild(label);
+  }
+  const portrait = state.src && state.src.h > state.src.w;
+  $("modeHint").textContent = state.mode === "fit"
+    ? `원본 비율을 유지한 채 ${portrait ? "세로 9:16" : "16:9"} 화면(예: 4K는 ${portrait ? "2160×3840" : "3840×2160"}) 안에 꼭 맞게 키웁니다.`
+    : "원본 비율을 유지한 채 긴 변을 2560 / 3840 / 7680 픽셀로 맞춥니다. 16:9가 아닌 이미지는 짧은 변이 기준보다 길어질 수 있습니다.";
+  renderScaleMap();
+  updateRunButton();
+}
+
+function renderScaleMap() {
+  // 8K 프레임(7680×4320)을 100%로 두고 각 출력과 원본을 실제 크기 비율로 그림
+  const map = $("scaleMap");
+  map.innerHTML = "";
+  const FW = 7680, FH = 4320;
+  const add = (w, h, cls, text) => {
+    const d = document.createElement("div");
+    d.className = "box " + cls;
+    d.style.width = Math.min(100, w / FW * 100) + "%";
+    d.style.height = Math.min(100, h / FH * 100) + "%";
+    const s = document.createElement("span");
+    s.textContent = text;
+    d.appendChild(s);
+    map.appendChild(d);
+  };
+  for (const p of [...PRESETS].reverse()) {
+    const t = state.src ? targetSize(p, state.src.w, state.src.h, state.mode) : { w: p.w, h: p.h };
+    add(t.w, t.h, state.selected.has(p.id) ? "on" : "", `${p.label} ${fmtMP(t.w, t.h)}`);
+  }
+  if (state.src) add(state.src.w, state.src.h, "src", `원본 ${fmtMP(state.src.w, state.src.h)}`);
+}
+
+function updateRunButton() {
+  $("run").disabled = state.busy || !state.src || state.selected.size === 0;
+  $("run").textContent = state.selected.size > 1 ? `업스케일 시작 (${state.selected.size}개)` : "업스케일 시작";
+}
+
+/* ---------- 처리 ---------- */
+let worker = null;
+function getWorker() {
+  if (!worker) {
+    const url = URL.createObjectURL(new Blob([$("workerSrc").textContent], { type: "text/javascript" }));
+    worker = new Worker(url);
+  }
+  return worker;
+}
+
+function runJob(pixels, dw, dh, onProgress) {
+  const w = getWorker();
+  const jobId = ++state.jobSeq;
+  const mime = $("format").value;
+  return new Promise((resolve, reject) => {
+    w.onmessage = async (e) => {
+      const m = e.data;
+      if (m.jobId !== jobId) return;
+      if (m.type === "progress") onProgress(m.p, false);
+      else if (m.type === "encoding") onProgress(1, true);
+      else if (m.type === "done") resolve(m.blob);
+      else if (m.type === "pixels") {
+        onProgress(1, true);
+        try {
+          const c = document.createElement("canvas");
+          c.width = dw; c.height = dh;
+          const g = c.getContext("2d");
+          if (mime === "image/jpeg" && m.hasAlpha) {
+            const tmp = document.createElement("canvas");
+            tmp.width = dw; tmp.height = dh;
+            tmp.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(m.pixels), dw, dh), 0, 0);
+            g.fillStyle = "#ffffff"; g.fillRect(0, 0, dw, dh); g.drawImage(tmp, 0, 0);
+          } else {
+            g.putImageData(new ImageData(new Uint8ClampedArray(m.pixels), dw, dh), 0, 0);
+          }
+          const blob = await new Promise((r) => c.toBlob(r, mime, 0.92));
+          blob ? resolve(blob) : reject({ canvas: true });
+        } catch (err) { reject({ canvas: true, message: String(err) }); }
+      } else if (m.type === "error") reject(m);
+    };
+    w.onerror = (ev) => reject({ message: ev.message || "작업 스레드 오류" });
+    w.postMessage({ jobId, src: pixels, sw: state.src.w, sh: state.src.h, dw, dh,
+      amount: Number($("sharpen").value) / 100 * 1.6, mime, quality: 0.92 }, [pixels]);
+  });
+}
+
+async function run() {
+  if (!state.src || state.busy || state.selected.size === 0) return;
+  state.busy = true;
+  updateRunButton();
+  $("cancel").hidden = false;
+  $("progress").hidden = false;
+  setMsg("");
+  const queue = PRESETS.filter((p) => state.selected.has(p.id));
+  let base;
+  try { base = srcPixels(); }
+  catch { finish(); setMsg("원본 픽셀을 읽지 못했습니다. 이미지를 다시 넣어 주세요.", true); return; }
+  const srcKey = state.src.url;
+  const started = performance.now();
+  let done = 0;
+  for (const p of queue) {
+    const t = targetSize(p, state.src.w, state.src.h, state.mode);
+    const label = `${p.label} (${t.w}×${t.h})`;
+    const onProgress = (f, encoding) => {
+      $("barFill").style.width = ((done + f * 0.9 + (encoding ? 0.05 : 0)) / queue.length * 100).toFixed(1) + "%";
+      $("progText").textContent = `${done + 1}/${queue.length} · ${label} ${encoding ? "파일로 저장하는 중…" : "보간 중 " + Math.round(f * 100) + "%"}`;
+    };
+    onProgress(0, false);
+    try {
+      const blob = await runJob(base.slice().buffer, t.w, t.h, onProgress);
+      if (!state.busy || state.src.url !== srcKey) return; // 취소됨
+      const old = state.results.get(p.id);
+      if (old) URL.revokeObjectURL(old.url);
+      state.results.set(p.id, { blob, url: URL.createObjectURL(blob), w: t.w, h: t.h, mime: blob.type || $("format").value, label: p.label });
+      state.active = p.id;
+      renderResults();
+    } catch (err) {
+      if (!state.busy) return;
+      const text = err && (err.oom || err.canvas)
+        ? `${label}: 메모리나 캔버스 크기 한도를 넘었습니다. 더 낮은 해상도를 고르거나 다른 탭을 닫은 뒤 PC 브라우저에서 다시 시도해 주세요.`
+        : `${label}: 처리에 실패했습니다 (${err && err.message || "알 수 없는 오류"}).`;
+      setMsg(text, true);
+      worker?.terminate(); worker = null;
+    }
+    done++;
+  }
+  const secs = ((performance.now() - started) / 1000).toFixed(1);
+  finish();
+  if (!$("msg").textContent) setMsg(`완료: ${queue.length}개 해상도, ${secs}초 걸렸습니다.`);
+}
+
+function finish() {
+  state.busy = false;
+  $("cancel").hidden = true;
+  $("progress").hidden = true;
+  $("barFill").style.width = "0";
+  updateRunButton();
+}
+
+function cancel() {
+  if (!state.busy) return;
+  worker?.terminate(); worker = null;
+  finish();
+  setMsg("취소했습니다.");
+}
+
+/* ---------- 결과 ---------- */
+function fileName(r) {
+  const ext = EXT[r.mime] || "png";
+  return `${state.src.name}_${r.label}_${r.w}x${r.h}.${ext}`;
+}
+
+async function save(r) {
+  const filename = fileName(r);
+  const dl = await downloadsReady;
+  if (dl) {
+    try { await dl.save({ filename, data: r.blob }); toast("저장했습니다: " + filename); }
+    catch (err) {
+      if (err && err.code === "declined") return;
+      if (err && err.code === "rate_limited") { toast("이미 저장 창이 열려 있습니다"); return; }
+      toast("이 화면에서는 파일을 저장할 수 없습니다");
+    }
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = r.url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function renderResults() {
+  const list = $("results");
+  list.innerHTML = "";
+  const items = PRESETS.filter((p) => state.results.has(p.id));
+  $("empty").hidden = items.length > 0;
+  for (const p of items) {
+    const r = state.results.get(p.id);
+    const card = document.createElement("article");
+    card.className = "card" + (state.active === p.id ? " active" : "");
+    const thumb = document.createElement("button");
+    thumb.type = "button"; thumb.className = "thumb";
+    thumb.setAttribute("aria-label", `${p.label} 결과에서 비교 위치 선택`);
+    const img = document.createElement("img");
+    img.src = r.url; img.alt = `${p.label} 업스케일 결과`;
+    thumb.appendChild(img);
+    if (state.active === p.id) {
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      thumb.appendChild(dot);
+    }
+    thumb.addEventListener("click", (ev) => {
+      // object-fit: contain 으로 그려진 실제 이미지 영역 기준으로 위치 계산
+      const box = thumb.getBoundingClientRect();
+      const s = Math.min(box.width / r.w, box.height / r.h);
+      const iw = r.w * s, ih = r.h * s;
+      const x = (ev.clientX - box.left - (box.width - iw) / 2) / iw;
+      const y = (ev.clientY - box.top - (box.height - ih) / 2) / ih;
+      if (ev.detail !== 0) state.focus = { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+      state.active = p.id;
+      renderResults();
+    });
+    const info = document.createElement("div");
+    info.className = "info";
+    info.innerHTML = `<header><b>${p.label}</b><span class="num">${r.w}×${r.h} · ${fmtSize(r.blob.size)} · ${(EXT[r.mime] || "png").toUpperCase()}</span></header>`;
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = "저장";
+    btn.addEventListener("click", () => save(r));
+    info.appendChild(btn);
+    card.append(thumb, info);
+    list.appendChild(card);
+  }
+  placeDots();
+  renderCompare();
+}
+
+function placeDots() {
+  const r = state.results.get(state.active);
+  const dot = document.querySelector(".card.active .dot");
+  if (!r || !dot) return;
+  const box = dot.parentElement.getBoundingClientRect();
+  const s = Math.min(box.width / r.w, box.height / r.h);
+  const iw = r.w * s, ih = r.h * s;
+  dot.style.left = ((box.width - iw) / 2 + state.focus.x * iw) + "px";
+  dot.style.top = ((box.height - ih) / 2 + state.focus.y * ih) + "px";
+}
+
+function renderCompare() {
+  const r = state.results.get(state.active);
+  $("compare").hidden = !r;
+  if (!r) return;
+  $("compareTitle").textContent = `확대 비교 · ${r.label} ${r.w}×${r.h}`;
+  if ($("loupeBImg").getAttribute("src") !== r.url) $("loupeBImg").src = r.url;
+  positionLoupes();
+}
+
+function positionLoupes() {
+  const r = state.results.get(state.active);
+  if (!r) return;
+  for (const id of ["loupeA", "loupeB"]) {
+    const pane = $(id);
+    const img = pane.querySelector("img");
+    const bw = pane.clientWidth, bh = pane.clientHeight;
+    const left = bw / 2 - state.focus.x * r.w;
+    const top = bh / 2 - state.focus.y * r.h;
+    img.style.width = r.w + "px";
+    img.style.height = r.h + "px";
+    img.style.transform = `translate(${left}px, ${top}px)`;
+  }
+}
+
+function bindDrag(pane) {
+  let last = null;
+  pane.addEventListener("pointerdown", (e) => { last = { x: e.clientX, y: e.clientY }; pane.setPointerCapture(e.pointerId); });
+  pane.addEventListener("pointermove", (e) => {
+    const r = state.results.get(state.active);
+    if (!last || !r) return;
+    state.focus.x = Math.min(1, Math.max(0, state.focus.x - (e.clientX - last.x) / r.w));
+    state.focus.y = Math.min(1, Math.max(0, state.focus.y - (e.clientY - last.y) / r.h));
+    last = { x: e.clientX, y: e.clientY };
+    positionLoupes(); placeDots();
+  });
+  const end = () => { last = null; };
+  pane.addEventListener("pointerup", end);
+  pane.addEventListener("pointercancel", end);
+}
+
+/* ---------- 이벤트 ---------- */
+$("file").addEventListener("change", (e) => { loadFile(e.target.files[0]); e.target.value = ""; });
+const drop = $("drop");
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+document.addEventListener("paste", (e) => {
+  const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
+  if (item) loadFile(item.getAsFile());
+});
+document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", () => { state.mode = r.value; renderTiers(); }));
+$("sharpen").addEventListener("input", () => { $("sharpenVal").textContent = $("sharpen").value + "%"; });
+$("run").addEventListener("click", run);
+$("cancel").addEventListener("click", cancel);
+bindDrag($("loupeA"));
+bindDrag($("loupeB"));
+window.addEventListener("resize", () => { positionLoupes(); placeDots(); });
+
+setSourceFromCanvas(makeSample(), "sample", true);
+</script>
+</body>
+</html>
