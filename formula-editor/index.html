@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>수식 편집기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Nanum+Myeongjo:wght@700;800&display=swap">
+<style>
+/* 레이아웃: 왼쪽 입력·기호판, 오른쪽 미리보기·설정·내보내기, 아래 전체 폭 보관함. 좁은 화면은 한 줄로 쌓는다. */
+:root {
+  --paper: #f3f5f2;
+  --surface: #ffffff;
+  --sunken: #eceff0;
+  --ink: #1a2120;
+  --muted: #5a6763;
+  --line: #d4dbd7;
+  --accent: #0b6b66;
+  --accent-ink: #ffffff;
+  --accent-soft: #dceeeb;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e7;
+  --chk-a: #ffffff;
+  --chk-b: #e2e6e3;
+  --shadow: 0 1px 2px rgba(20, 40, 36, .06), 0 6px 20px rgba(20, 40, 36, .06);
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --font-display: "Nanum Myeongjo", "AppleMyungjo", "Batang", "Noto Serif KR", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111615; --surface: #192020; --sunken: #141a19; --ink: #e5ebe9; --muted: #98a6a1;
+    --line: #2b3533; --accent: #55bdb3; --accent-ink: #052220; --accent-soft: #17332f;
+    --danger: #f2b8b5; --danger-soft: #3a1d1b; --chk-a: #f4f6f5; --chk-b: #dde2df;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111615; --surface: #192020; --sunken: #141a19; --ink: #e5ebe9; --muted: #98a6a1;
+  --line: #2b3533; --accent: #55bdb3; --accent-ink: #052220; --accent-soft: #17332f;
+  --danger: #f2b8b5; --danger-soft: #3a1d1b; --chk-a: #f4f6f5; --chk-b: #dde2df;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--paper); color: var(--ink); }
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1320px; margin: 0 auto; }
+
+/* 머리말 */
+.top {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px 24px; padding-block: 28px 20px;
+}
+.brand h1 {
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.1; margin: 0; letter-spacing: -.01em; text-wrap: balance;
+}
+.brand h1 .x { font-style: italic; color: var(--accent); font-family: "Times New Roman", var(--font-display); }
+.brand p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.top-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* 레이아웃 */
+.grid {
+  display: grid; gap: 16px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  grid-template-areas: "editor output" "gallery gallery";
+  align-items: start;
+}
+#editor { grid-area: editor; }
+#output { grid-area: output; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+#gallery { grid-area: gallery; }
+@media (max-width: 920px) {
+  .grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "editor" "output" "gallery"; }
+  #output { position: static; }
+}
+
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow); min-width: 0;
+}
+.card-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+.card-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.card-head .sub { color: var(--muted); font-size: 12.5px; }
+.card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+.label {
+  font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* 버튼 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; font-weight: 500; font-size: 13.5px; white-space: nowrap;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.soft { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--sunken); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { border-color: var(--danger); background: var(--danger-soft); }
+.btn.sm { min-height: 28px; padding: 3px 9px; font-size: 12.5px; border-radius: 7px; }
+.btn svg.i { width: 16px; height: 16px; flex: none; }
+
+/* 입력창 */
+.tex-box { position: relative; }
+#tex {
+  display: block; width: 100%; min-height: 150px; resize: vertical;
+  font-family: var(--font-mono); font-size: 14.5px; line-height: 1.6;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 14px; tab-size: 2;
+}
+#tex:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.hint { color: var(--muted); font-size: 12.5px; margin: 0; }
+.hint kbd {
+  font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--sunken);
+}
+.err {
+  margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--danger-soft); color: var(--danger);
+  font-size: 13px; border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* 기호판 */
+.tabs {
+  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.tab {
+  flex: none; border: 1px solid transparent; background: transparent; padding: 5px 10px; border-radius: 999px;
+  cursor: pointer; font-size: 13px; color: var(--muted); white-space: nowrap;
+}
+.tab:hover { color: var(--ink); background: var(--sunken); }
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.palette {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px;
+  min-height: 132px; align-content: start;
+}
+.palette.wide { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.sym {
+  display: flex; align-items: center; justify-content: center; min-height: 46px; padding: 6px 4px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer;
+  overflow: hidden; color: var(--ink); font-size: 15px;
+}
+.sym:hover { border-color: var(--accent); background: var(--accent-soft); }
+.sym mjx-container, .sym svg { max-width: 100%; }
+.sym svg { max-height: 40px; }
+
+/* 미리보기 */
+.view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.view-toggle button {
+  border: 0; background: transparent; padding: 4px 10px; font-size: 12.5px; cursor: pointer; color: var(--muted);
+}
+.view-toggle button + button { border-left: 1px solid var(--line); }
+.view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.stage {
+  border-radius: 8px; border: 1px solid var(--line); min-height: 170px; max-height: 46vh; overflow: auto;
+  display: flex; padding: 20px;
+}
+.stage-inner { margin: auto; max-width: 100%; }
+.stage-inner svg { display: block; max-width: 100%; height: auto; }
+.bg-checker {
+  background-color: var(--chk-a);
+  background-image:
+    linear-gradient(45deg, var(--chk-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--chk-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--chk-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--chk-b) 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.bg-white { background: #ffffff; }
+.bg-black { background: #101312; }
+.stage .empty { color: #6b7672; font-size: 13px; }
+.meta {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.meta b { color: var(--ink); font-weight: 600; }
+
+/* 설정 */
+.settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+@media (max-width: 520px) { .settings { grid-template-columns: minmax(0, 1fr); } }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field.full { grid-column: 1 / -1; }
+.color-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.swatch {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); cursor: pointer; padding: 0;
+  position: relative;
+}
+.swatch[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent);
+}
+.color-pick { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+input[type="color"] {
+  width: 34px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: none; cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+#hex {
+  width: 92px; font-family: var(--font-mono); font-size: 13px; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--sunken); text-transform: uppercase;
+}
+.range-row { display: flex; align-items: center; gap: 10px; }
+.range-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.range-row output { min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.seg { display: inline-flex; align-self: flex-start; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button {
+  border: 0; background: transparent; padding: 5px 11px; font-size: 13px; cursor: pointer; color: var(--muted);
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.export { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.export .btn { width: 100%; }
+
+/* 보관함 */
+.gal-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gal-tools .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.item {
+  border: 1px solid var(--line); border-radius: 9px; background: var(--surface); display: flex; flex-direction: column;
+  overflow: hidden; min-width: 0; transition: border-color .12s, box-shadow .12s;
+}
+.item.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.item-thumb {
+  height: 116px; display: flex; align-items: center; justify-content: center; padding: 12px; cursor: pointer;
+  border-bottom: 1px solid var(--line); overflow: hidden;
+}
+.item-thumb svg { max-width: 100%; max-height: 92px; width: auto; height: auto; }
+.item-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.item-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.item-top input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); flex: none; margin: 0; }
+.item-name {
+  flex: 1; min-width: 0; border: 1px solid transparent; background: transparent; border-radius: 6px;
+  padding: 2px 6px; font-size: 13px; font-weight: 600;
+}
+.item-name:hover, .item-name:focus { border-color: var(--line); background: var(--sunken); outline: none; }
+.dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
+.item-code {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; margin: 0;
+}
+.item-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.gal-empty {
+  border: 1px dashed var(--line); border-radius: 9px; padding: 28px 16px; text-align: center; color: var(--muted);
+}
+.merge-opts {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 10px 12px; border-radius: 8px;
+  background: var(--sunken); font-size: 13px;
+}
+.merge-opts label { display: inline-flex; align-items: center; gap: 6px; }
+.merge-opts select, .merge-opts input[type="number"] {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 3px 6px;
+}
+.merge-opts input[type="number"] { width: 70px; }
+
+/* 대화상자 */
+dialog {
+  border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--surface); color: var(--ink);
+  width: min(1080px, calc(100vw - 32px)); max-height: calc(100vh - 48px); box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+}
+dialog::backdrop { background: rgba(10, 18, 16, .45); }
+.dlg { display: flex; flex-direction: column; max-height: calc(100vh - 50px); }
+.dlg-head {
+  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+}
+.dlg-head h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 20px; }
+.dlg-main { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 0; flex: 1; }
+.cat-list {
+  border-right: 1px solid var(--line); padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+}
+.cat-list button {
+  text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  color: var(--muted); font-size: 13.5px; display: flex; justify-content: space-between; gap: 6px;
+}
+.cat-list button span { font-variant-numeric: tabular-nums; font-size: 12px; opacity: .7; }
+.cat-list button:hover { background: var(--sunken); color: var(--ink); }
+.cat-list button[aria-selected="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.ex-pane { overflow-y: auto; padding: 14px 16px 18px; min-width: 0; }
+.ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.ex {
+  border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+}
+.ex-title { padding: 8px 12px 0; font-weight: 600; font-size: 13.5px; display: flex; justify-content: space-between; gap: 8px; }
+.ex-title small { color: var(--muted); font-weight: 400; }
+.ex-math {
+  padding: 12px; min-height: 84px; display: flex; align-items: center; justify-content: center; overflow-x: auto;
+  cursor: pointer; color: var(--ink);
+}
+.ex-math svg { max-width: none; }
+.ex-code {
+  margin: 0 12px; padding: 6px 8px; border-radius: 6px; background: var(--sunken); font-family: var(--font-mono);
+  font-size: 11.5px; white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 86px; overflow: auto;
+}
+.ex-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 12px; }
+#exSearch {
+  width: min(320px, 100%); padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken);
+}
+@media (max-width: 700px) {
+  .dlg-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .cat-list { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cat-list button { flex: none; }
+  .cat-list button span { display: none; }
+  .ex-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.png-view { padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+.png-frame { border-radius: 8px; border: 1px solid var(--line); padding: 16px; overflow: auto; display: flex; }
+.png-frame img { margin: auto; display: block; max-width: none; }
+.png-frame.fit img { max-width: 100%; height: auto; }
+
+/* 알림 */
+.toasts {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; z-index: 50;
+  pointer-events: none; width: max-content; max-width: calc(100vw - 32px);
+}
+.toast {
+  background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: 8px; font-size: 13.5px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .25); animation: tin .18s ease-out;
+}
+.toast.error { background: var(--danger); color: var(--surface); }
+@keyframes tin { from { transform: translateY(6px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } * { transition: none !important; } }
+.loading { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>수식 편집기 <span class="x">f(x)</span></h1>
+      <p>LaTeX 문법으로 수식을 입력하면 바로 미리 보여 줍니다. 글자 색을 정하고, 배경이 투명한 PNG로 저장하세요.</p>
+    </div>
+    <div class="top-actions">
+      <button class="btn soft" id="openExamples" type="button">
+        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16M4 12h10M4 19h7"/><circle cx="18" cy="17" r="3"/></svg>
+        수식 예시 보기
+      </button>
+      <button class="btn" id="openPng" type="button">
+        <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+        PNG 결과 미리보기
+      </button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- 입력 + 기호판 -->
+    <section id="editor" class="stack" aria-label="수식 입력">
+      <div class="card">
+        <div class="card-head">
+          <h2>수식 입력 <span class="sub">LaTeX</span></h2>
+          <div class="row">
+            <button class="btn sm ghost" id="copyTex" type="button">LaTeX 복사</button>
+            <button class="btn sm ghost danger" id="clearTex" type="button">지우기</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="tex-box">
+            <label for="tex" class="label" style="display:block;margin-bottom:6px">수식 코드</label>
+            <textarea id="tex" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="예: x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"></textarea>
+          </div>
+          <p class="err" id="err" role="alert" hidden></p>
+          <p class="hint">아래 기호를 누르면 커서 위치에 들어갑니다. 글자를 선택한 뒤 누르면 선택한 글자를 감쌉니다.
+            <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 보관함에 추가 · <kbd>Ctrl</kbd>+<kbd>S</kbd> PNG 저장</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>기호와 구조</h2>
+          <span class="sub" id="palHint">눌러서 넣기</span>
+        </div>
+        <div class="card-body">
+          <div class="tabs" id="palTabs" role="tablist" aria-label="기호 분류"></div>
+          <div class="palette" id="palette" role="tabpanel"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 미리보기 + 설정 + 내보내기 -->
+    <section id="output" class="card" aria-label="미리보기와 내보내기">
+      <div class="card-head">
+        <h2>미리보기</h2>
+        <div class="view-toggle" role="group" aria-label="미리보기 배경">
+          <button type="button" data-bg="checker" aria-pressed="true">투명</button>
+          <button type="button" data-bg="white" aria-pressed="false">흰 배경</button>
+          <button type="button" data-bg="black" aria-pressed="false">검은 배경</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="stage bg-checker" id="stage"><div class="stage-inner" id="preview"><span class="loading">수식 엔진을 불러오는 중…</span></div></div>
+        <div class="meta" id="meta"></div>
+
+        <div class="settings">
+          <div class="field full">
+            <span class="label">글자 색상</span>
+            <div class="color-row" id="swatches">
+              <span class="color-pick">
+                <input type="color" id="colorPick" value="#000000" aria-label="직접 색 고르기">
+                <input type="text" id="hex" value="#000000" maxlength="7" aria-label="색상 코드">
+              </span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" for="size">글자 크기</label>
+            <div class="range-row"><input type="range" id="size" min="12" max="160" step="1" value="48"><output id="sizeOut" for="size">48px</output></div>
+          </div>
+          <div class="field">
+            <label class="label" for="pad">여백</label>
+            <div class="range-row"><input type="range" id="pad" min="0" max="80" step="1" value="12"><output id="padOut" for="pad">12px</output></div>
+          </div>
+          <div class="field">
+            <span class="label">해상도 배율</span>
+            <div class="seg" id="scaleSeg" role="group" aria-label="해상도 배율">
+              <button type="button" data-v="1" aria-pressed="false">1×</button>
+              <button type="button" data-v="2" aria-pressed="true">2×</button>
+              <button type="button" data-v="3" aria-pressed="false">3×</button>
+              <button type="button" data-v="4" aria-pressed="false">4×</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">표시 방식</span>
+            <div class="seg" id="modeSeg" role="group" aria-label="표시 방식">
+              <button type="button" data-v="display" aria-pressed="true">블록 (독립 수식)</button>
+              <button type="button" data-v="inline" aria-pressed="false">인라인 (문장 속)</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="label">내보내기</span>
+          <div class="export">
+            <button class="btn primary" id="dlPng" type="button">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+              PNG 저장 (투명)
+            </button>
+            <button class="btn" id="cpPng" type="button">PNG 이미지 복사</button>
+            <button class="btn" id="dlSvg" type="button">SVG 저장</button>
+            <button class="btn soft" id="addGal" type="button">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              보관함에 추가
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 보관함 -->
+    <section id="gallery" class="card" aria-label="결과 보관함">
+      <div class="card-head">
+        <h2>결과 보관함 <span class="sub" id="galCount"></span></h2>
+        <div class="gal-tools">
+          <button class="btn sm" id="selAll" type="button">전체 선택</button>
+          <button class="btn sm" id="selNone" type="button">선택 해제</button>
+          <span class="sep" aria-hidden="true"></span>
+          <button class="btn sm primary" id="selPng" type="button">선택 PNG 저장</button>
+          <button class="btn sm" id="selZip" type="button">ZIP으로 묶어 저장</button>
+          <button class="btn sm" id="selMerge" type="button">한 장으로 합쳐 저장</button>
+          <button class="btn sm" id="selColor" type="button">현재 색상 적용</button>
+          <button class="btn sm danger" id="selDel" type="button">선택 삭제</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="merge-opts">
+          <strong>합치기 설정</strong>
+          <label>배치 <select id="mergeDir"><option value="v">세로로 쌓기</option><option value="h">가로로 잇기</option></select></label>
+          <label>정렬 <select id="mergeAlign"><option value="start">왼쪽·위</option><option value="center" selected>가운데</option><option value="end">오른쪽·아래</option></select></label>
+          <label>간격 <input type="number" id="mergeGap" min="0" max="400" value="24"> px</label>
+          <span style="color:var(--muted)">저장할 때 지금의 해상도 배율과 여백을 씁니다. 색상과 글자 크기는 항목마다 따로 저장됩니다.</span>
+        </div>
+        <div class="gal-grid" id="galGrid"></div>
+        <div class="gal-empty" id="galEmpty" hidden>아직 보관한 수식이 없습니다. 위에서 수식을 만든 뒤 <b>보관함에 추가</b>를 누르세요.</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 수식 예시 창 -->
+<dialog id="exDlg" aria-labelledby="exTitle">
+  <div class="dlg">
+    <div class="dlg-head">
+      <h2 id="exTitle">수식 예시</h2>
+      <input type="search" id="exSearch" placeholder="예시 검색 (예: 적분, 행렬, 정규분포)" aria-label="예시 검색">
+      <button class="btn" id="exClose" type="button">닫기</button>
+    </div>
+    <div class="dlg-main">
+      <nav class="cat-list" id="exCats" role="tablist" aria-label="예시 분류"></nav>
+      <div class="ex-pane" id="exPane"><div class="ex-grid" id="exGrid"></div></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- PNG 결과 미리보기 창 -->
+<dialog id="pngDlg" aria-labelledby="pngTitle">
+  <div class="dlg">
+    <div class="dlg-head">
+      <h2 id="pngTitle">PNG 결과 미리보기</h2>
+      <div class="row">
+        <div class="view-toggle" role="group" aria-label="미리보기 배경" id="pngBg">
+          <button type="button" data-bg="checker" aria-pressed="true">투명</button>
+          <button type="button" data-bg="white" aria-pressed="false">흰 배경</button>
+          <button type="button" data-bg="black" aria-pressed="false">검은 배경</button>
+        </div>
+        <label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="pngFit" checked> 창에 맞추기</label>
+        <button class="btn" id="pngClose" type="button">닫기</button>
+      </div>
+    </div>
+    <div class="png-view">
+      <div class="meta" id="pngMeta"></div>
+      <div class="png-frame bg-checker fit" id="pngFrame"><img id="pngImg" alt="생성된 PNG 수식 이미지"></div>
+      <div class="row">
+        <button class="btn primary" id="pngSave" type="button">이 PNG 저장</button>
+        <button class="btn" id="pngCopy" type="button">이미지 복사</button>
+        <button class="btn soft" id="pngAdd" type="button">보관함에 추가</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+window.MathJax = {
+  tex: {
+    packages: { '[+]': ['physics'], '[-]': ['noerrors', 'noundefined'] },
+    formatError: function (jax, err) { throw err; }
+  },
+  svg: { fontCache: 'local' },
+  options: { enableMenu: false },
+  startup: { typeset: false }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg-full.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ───────────── 기호판 데이터 ─────────────
+     [넣을 코드, 버튼에 보일 수식(생략 시 넣을 코드), 이름]
+     § 는 커서 자리(선택한 글자가 들어갈 자리)입니다. */
+  var PALETTE = [
+    { name: '구조', wide: true, items: [
+      ['\\frac{§}{§}', '\\frac{a}{b}', '분수'],
+      ['\\dfrac{§}{§}', '\\dfrac{a}{b}', '큰 분수'],
+      ['\\sqrt{§}', '\\sqrt{x}', '제곱근'],
+      ['\\sqrt[§]{§}', '\\sqrt[n]{x}', 'n제곱근'],
+      ['^{§}', 'x^{a}', '위첨자 (지수)'],
+      ['_{§}', 'x_{a}', '아래첨자'],
+      ['_{§}^{§}', 'x_{a}^{b}', '위·아래첨자'],
+      ['{}_{§}^{§}', '{}_{a}^{b}X', '왼쪽 첨자'],
+      ['\\binom{§}{§}', '\\binom{n}{k}', '이항계수'],
+      ['\\sum_{§}^{§}', '\\sum_{i=1}^{n}', '합 (시그마)'],
+      ['\\prod_{§}^{§}', '\\prod_{i=1}^{n}', '곱'],
+      ['\\int_{§}^{§}', '\\int_{a}^{b}', '정적분'],
+      ['\\lim_{§ \\to §}', '\\lim_{x\\to a}', '극한'],
+      ['\\frac{d§}{d§}', '\\frac{dy}{dx}', '미분'],
+      ['\\frac{\\partial §}{\\partial §}', '\\frac{\\partial f}{\\partial x}', '편미분'],
+      ['\\left( § \\right)', '\\left(\\,\\cdot\\,\\right)', '늘어나는 괄호'],
+      ['\\left| § \\right|', '\\left|x\\right|', '절댓값'],
+      ['\\left\\| § \\right\\|', '\\left\\|x\\right\\|', '노름'],
+      ['\\overline{§}', '\\overline{AB}', '윗줄'],
+      ['\\underline{§}', '\\underline{AB}', '밑줄'],
+      ['\\overbrace{§}^{§}', '\\overbrace{a+b}^{n}', '위 묶음괄호'],
+      ['\\underbrace{§}_{§}', '\\underbrace{a+b}_{n}', '아래 묶음괄호'],
+      ['\\overset{§}{§}', '\\overset{*}{=}', '위에 쌓기'],
+      ['\\underset{§}{§}', '\\underset{x}{\\max}', '아래에 쌓기'],
+      ['\\xrightarrow{§}', '\\xrightarrow{f}', '글자 얹은 화살표'],
+      ['\\boxed{§}', '\\boxed{x}', '상자'],
+      ['\\cancel{§}', '\\cancel{x}', '취소선'],
+      ['\\text{§}', '\\text{가나다}', '일반 글자'],
+      ['\\textcolor{red}{§}', '\\textcolor{red}{x}', '부분 색상'],
+      ['\\tag{§}', '\\text{(1)}', '식 번호']
+    ]},
+    { name: '그리스 문자', items: [
+      'alpha','beta','gamma','delta','epsilon','varepsilon','zeta','eta','theta','vartheta','iota','kappa',
+      'lambda','mu','nu','xi','pi','varpi','rho','varrho','sigma','varsigma','tau','upsilon','phi','varphi',
+      'chi','psi','omega','Gamma','Delta','Theta','Lambda','Xi','Pi','Sigma','Upsilon','Phi','Psi','Omega'
+    ].map(function (n) { return ['\\' + n, null, n]; }) },
+    { name: '연산', items: [
+      ['+', null, '더하기'], ['-', null, '빼기'], ['\\pm', null, '플러스마이너스'], ['\\mp', null, '마이너스플러스'],
+      ['\\times', null, '곱하기'], ['\\div', null, '나누기'], ['\\cdot', null, '가운뎃점 곱'], ['\\ast', null, '별표'],
+      ['\\star', null, '별'], ['\\circ', null, '합성'], ['\\bullet', null, '굵은 점'], ['\\oplus', null, '원 더하기'],
+      ['\\ominus', null, '원 빼기'], ['\\otimes', null, '텐서곱'], ['\\odot', null, '원 점'], ['\\oslash', null, '원 사선'],
+      ['\\cap', null, '교집합'], ['\\cup', null, '합집합'], ['\\setminus', null, '차집합'], ['\\wedge', null, '논리곱'],
+      ['\\vee', null, '논리합'], ['\\nabla', null, '나블라'], ['\\partial', null, '편미분 기호'], ['\\infty', null, '무한대'],
+      ['\\dagger', null, '대거'], ['\\prime', "f'", '프라임'], ['\\%', null, '퍼센트'], ['!', 'n!', '팩토리얼']
+    ]},
+    { name: '관계', items: [
+      ['=', null, '같다'], ['\\neq', null, '같지 않다'], ['<', null, '작다'], ['>', null, '크다'],
+      ['\\leq', null, '작거나 같다'], ['\\geq', null, '크거나 같다'], ['\\leqq', null, '작거나 같다 (이중)'], ['\\geqq', null, '크거나 같다 (이중)'],
+      ['\\ll', null, '매우 작다'], ['\\gg', null, '매우 크다'], ['\\approx', null, '근사'], ['\\equiv', null, '합동·항등'],
+      ['\\sim', null, '닮음'], ['\\simeq', null, '거의 같다'], ['\\cong', null, '합동'], ['\\propto', null, '비례'],
+      ['\\doteq', null, '점 등호'], ['\\triangleq', null, '정의'], ['\\coloneqq', null, '정의 (:=)'], ['\\perp', null, '수직'],
+      ['\\parallel', null, '평행'], ['\\mid', null, '나누어떨어짐'], ['\\nmid', null, '나누어떨어지지 않음'], ['\\prec', null, '선행'],
+      ['\\succ', null, '후행'], ['\\models', null, '만족'], ['\\vdash', null, '증명'], ['\\asymp', null, '점근']
+    ]},
+    { name: '화살표', items: [
+      ['\\to', null, '화살표'], ['\\leftarrow', null, '왼쪽 화살표'], ['\\leftrightarrow', null, '양방향'], ['\\Rightarrow', null, '이면'],
+      ['\\Leftarrow', null, '역 이면'], ['\\Leftrightarrow', null, '필요충분'], ['\\implies', null, '함의'], ['\\iff', null, '동치'],
+      ['\\mapsto', null, '대응'], ['\\longrightarrow', null, '긴 화살표'], ['\\longleftarrow', null, '긴 왼쪽 화살표'], ['\\hookrightarrow', null, '포함 사상'],
+      ['\\uparrow', null, '위'], ['\\downarrow', null, '아래'], ['\\updownarrow', null, '위아래'], ['\\Uparrow', null, '위 (이중)'],
+      ['\\nearrow', null, '북동'], ['\\searrow', null, '남동'], ['\\swarrow', null, '남서'], ['\\nwarrow', null, '북서'],
+      ['\\rightleftharpoons', null, '가역 반응'], ['\\rightharpoonup', null, '작살'], ['\\xleftarrow{§}', '\\xleftarrow{g}', '글자 얹은 왼쪽 화살표'], ['\\circlearrowleft', null, '회전']
+    ]},
+    { name: '집합·논리', items: [
+      ['\\in', null, '원소'], ['\\notin', null, '원소 아님'], ['\\ni', null, '포함함'], ['\\subset', null, '부분집합'],
+      ['\\supset', null, '포함집합'], ['\\subseteq', null, '부분집합 (같음 포함)'], ['\\supseteq', null, '포함집합 (같음 포함)'], ['\\subsetneq', null, '진부분집합'],
+      ['\\emptyset', null, '공집합'], ['\\varnothing', null, '공집합 (원)'], ['\\forall', null, '모든'], ['\\exists', null, '존재'],
+      ['\\nexists', null, '존재하지 않음'], ['\\neg', null, '부정'], ['\\land', null, '그리고'], ['\\lor', null, '또는'],
+      ['\\therefore', null, '그러므로'], ['\\because', null, '왜냐하면'], ['\\mathbb{N}', null, '자연수'], ['\\mathbb{Z}', null, '정수'],
+      ['\\mathbb{Q}', null, '유리수'], ['\\mathbb{R}', null, '실수'], ['\\mathbb{C}', null, '복소수'], ['\\aleph', null, '알레프'],
+      ['A^{c}', null, '여집합'], ['\\{\\, § \\mid § \\,\\}', '\\{x\\mid P\\}', '조건제시법'], ['\\top', null, '참'], ['\\bot', null, '거짓']
+    ]},
+    { name: '괄호', items: [
+      ['(§)', '( )', '소괄호'], ['[§]', '[ ]', '대괄호'], ['\\{§\\}', '\\{ \\}', '중괄호'], ['\\langle § \\rangle', '\\langle\\ \\rangle', '꺾쇠괄호'],
+      ['\\lfloor § \\rfloor', '\\lfloor\\ \\rfloor', '내림 (바닥)'], ['\\lceil § \\rceil', '\\lceil\\ \\rceil', '올림 (천장)'], ['|§|', '|\\ |', '세로선'], ['\\|§\\|', '\\|\\ \\|', '이중 세로선'],
+      ['\\left[ § \\right]', '\\left[\\frac{a}{b}\\right]', '늘어나는 대괄호'], ['\\left\\{ § \\right\\}', '\\left\\{\\frac{a}{b}\\right\\}', '늘어나는 중괄호'],
+      ['\\left\\langle § \\right\\rangle', '\\left\\langle\\frac{a}{b}\\right\\rangle', '늘어나는 꺾쇠'], ['\\left. § \\right|_{§}', '\\left.\\frac{a}{b}\\right|_{x}', '대입 막대'],
+      ['\\bigl( § \\bigr)', '\\bigl(\\ \\bigr)', '조금 큰 괄호'], ['\\Bigl( § \\Bigr)', '\\Bigl(\\ \\Bigr)', '큰 괄호'], ['\\biggl( § \\biggr)', '\\biggl(\\ \\biggr)', '더 큰 괄호'], ['\\Biggl( § \\Biggr)', '\\Biggl(\\ \\Biggr)', '가장 큰 괄호']
+    ]},
+    { name: '악센트', items: [
+      ['\\hat{§}', '\\hat{a}', '햇'], ['\\check{§}', '\\check{a}', '체크'], ['\\tilde{§}', '\\tilde{a}', '틸데'], ['\\acute{§}', '\\acute{a}', '양음'],
+      ['\\grave{§}', '\\grave{a}', '억음'], ['\\dot{§}', '\\dot{a}', '점 (시간 미분)'], ['\\ddot{§}', '\\ddot{a}', '두 점'], ['\\breve{§}', '\\breve{a}', '브레베'],
+      ['\\bar{§}', '\\bar{x}', '바 (평균)'], ['\\vec{§}', '\\vec{v}', '벡터'], ['\\mathring{§}', '\\mathring{A}', '고리'], ['\\widehat{§}', '\\widehat{AB}', '넓은 햇'],
+      ['\\widetilde{§}', '\\widetilde{AB}', '넓은 틸데'], ['\\overrightarrow{§}', '\\overrightarrow{AB}', '위 화살표'], ['\\overleftarrow{§}', '\\overleftarrow{AB}', '위 왼쪽 화살표'], ['\\overleftrightarrow{§}', '\\overleftrightarrow{AB}', '직선']
+    ]},
+    { name: '함수', wide: true, items: [
+      'sin','cos','tan','cot','sec','csc','arcsin','arccos','arctan','sinh','cosh','tanh',
+      'log','ln','exp','lg','max','min','sup','inf','det','gcd','deg','dim','ker','arg','Pr','limsup','liminf'
+    ].map(function (n) { return ['\\' + n, null, n]; }).concat([
+      ['\\log_{§}', '\\log_{a}', '밑이 있는 로그'], ['\\bmod', 'a \\bmod b', '나머지'], ['\\pmod{§}', 'a \\pmod{n}', '합동식 법'],
+      ['\\operatorname{§}', '\\operatorname{rank}', '새 함수 이름']
+    ]) },
+    { name: '큰 연산자', items: [
+      ['\\sum', null, '합'], ['\\prod', null, '곱'], ['\\coprod', null, '쌍대곱'], ['\\int', null, '적분'],
+      ['\\iint', null, '이중적분'], ['\\iiint', null, '삼중적분'], ['\\oint', null, '선적분 (폐곡선)'], ['\\idotsint', null, '다중적분'],
+      ['\\bigcup', null, '큰 합집합'], ['\\bigcap', null, '큰 교집합'], ['\\bigoplus', null, '직합'], ['\\bigotimes', null, '큰 텐서곱'],
+      ['\\bigvee', null, '큰 논리합'], ['\\bigwedge', null, '큰 논리곱'], ['\\bigsqcup', null, '분리합집합'], ['\\bigodot', null, '큰 원 점']
+    ]},
+    { name: '행렬·배열', wide: true, items: [
+      ['\\begin{pmatrix} § & § \\\\ § & § \\end{pmatrix}', '\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}', '행렬 (소괄호)'],
+      ['\\begin{bmatrix} § & § \\\\ § & § \\end{bmatrix}', '\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}', '행렬 (대괄호)'],
+      ['\\begin{vmatrix} § & § \\\\ § & § \\end{vmatrix}', '\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}', '행렬식'],
+      ['\\begin{Bmatrix} § & § \\\\ § & § \\end{Bmatrix}', '\\begin{Bmatrix}a&b\\\\c&d\\end{Bmatrix}', '행렬 (중괄호)'],
+      ['\\begin{matrix} § & § \\\\ § & § \\end{matrix}', '\\begin{matrix}a&b\\\\c&d\\end{matrix}', '괄호 없는 행렬'],
+      ['\\begin{pmatrix} § & § & § \\\\ § & § & § \\\\ § & § & § \\end{pmatrix}', '\\begin{pmatrix}1&0&0\\\\0&1&0\\\\0&0&1\\end{pmatrix}', '3×3 행렬'],
+      ['\\begin{pmatrix} § \\\\ § \\\\ § \\end{pmatrix}', '\\begin{pmatrix}x\\\\y\\\\z\\end{pmatrix}', '열벡터'],
+      ['\\begin{cases} § & § \\\\ § & § \\end{cases}', '\\begin{cases}a&x>0\\\\b&x\\le0\\end{cases}', '경우 나누기'],
+      ['\\begin{aligned} § &= § \\\\ &= § \\end{aligned}', '\\begin{aligned}a&=b\\\\&=c\\end{aligned}', '등호 맞춤 정렬'],
+      ['\\begin{gathered} § \\\\ § \\end{gathered}', '\\begin{gathered}a+b\\\\c\\end{gathered}', '가운데 모음'],
+      ['\\begin{array}{c|c} § & § \\\\ \\hline § & § \\end{array}', '\\begin{array}{c|c}a&b\\\\\\hline c&d\\end{array}', '표 (배열)'],
+      ['\\cdots', null, '가운데 점들'], ['\\ldots', null, '아래 점들'], ['\\vdots', null, '세로 점들'], ['\\ddots', null, '대각 점들'],
+      ['\\\\', '\\text{줄바꿈}', '줄바꿈 \\\\'], ['&', '\\text{\\&\\ 칸 나눔}', '칸 나눔 &']
+    ]},
+    { name: '글꼴', wide: true, items: [
+      ['\\mathbf{§}', '\\mathbf{AaBb}', '굵게'], ['\\boldsymbol{§}', '\\boldsymbol{\\alpha x}', '굵은 기호'], ['\\mathit{§}', '\\mathit{AaBb}', '기울임'],
+      ['\\mathrm{§}', '\\mathrm{AaBb}', '바로 세움'], ['\\mathsf{§}', '\\mathsf{AaBb}', '산세리프'], ['\\mathtt{§}', '\\mathtt{AaBb}', '타자체'],
+      ['\\mathcal{§}', '\\mathcal{ABC}', '필기체'], ['\\mathscr{§}', '\\mathscr{ABC}', '스크립트'], ['\\mathfrak{§}', '\\mathfrak{ABC}', '프락투어'],
+      ['\\mathbb{§}', '\\mathbb{ABC}', '칠판 굵은체'], ['\\text{§}', '\\text{한글 OK}', '일반 글자'], ['\\textbf{§}', '\\textbf{굵은 글}', '굵은 일반 글자'],
+      ['\\displaystyle ', '\\displaystyle\\sum_{i}', '크게 표시'], ['\\large ', '\\large A', '크게'], ['\\small ', '\\small A', '작게'], ['\\Huge ', '\\Huge A', '아주 크게']
+    ]},
+    { name: '기타·공백', items: [
+      ['\\,', 'a\\,b', '좁은 공백'], ['\\:', 'a\\:b', '중간 공백'], ['\\;', 'a\\;b', '넓은 공백'], ['\\quad', 'a\\quad b', '큰 공백'],
+      ['\\qquad', 'a\\qquad b', '더 큰 공백'], ['\\!', 'a\\!b', '음수 공백'], ['\\hbar', null, '디랙 상수'], ['\\ell', null, '엘'],
+      ['\\Re', null, '실수부'], ['\\Im', null, '허수부'], ['\\wp', null, '바이어슈트라스'], ['\\angle', null, '각'],
+      ['\\triangle', null, '삼각형'], ['\\square', null, '사각형'], ['^\\circ', '30^\\circ', '도 (각도)'], ['\\degree', '\\degree\\mathrm{C}', '섭씨'],
+      ['\\checkmark', null, '체크'], ['\\dagger', null, '대거'], ['\\S', null, '절'], ['\\#', null, '샵'],
+      ['\\$', null, '달러'], ['\\&', null, '앤드'], ['\\clubsuit', null, '클럽'], ['\\heartsuit', null, '하트']
+    ]},
+    { name: '화학식', wide: true, items: [
+      ['\\ce{§}', '\\ce{H2O}', '화학식'], ['\\ce{§ -> §}', '\\ce{A -> B}', '반응'], ['\\ce{§ <=> §}', '\\ce{A <=> B}', '가역 반응'],
+      ['\\ce{§ ->[§] §}', '\\ce{A ->[\\Delta] B}', '조건 있는 반응'], ['\\ce{SO4^2-}', null, '이온'], ['\\ce{Fe^3+}', null, '양이온'],
+      ['\\ce{^{235}_{92}U}', null, '동위원소'], ['\\ce{CO2 ^}', null, '기체 발생'], ['\\ce{AgCl v}', null, '침전'],
+      ['\\ce{CuSO4.5H2O}', null, '수화물'], ['\\ce{CH3-CH2-OH}', null, '구조식'], ['\\ce{(aq)}', '\\ce{NaCl(aq)}', '상태 표시']
+    ]}
+  ];
+
+  /* ───────────── 수식 예시 데이터 ───────────── */
+  var EXAMPLES = [
+    { cat: '대수', items: [
+      ['근의 공식', 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'],
+      ['완전제곱식', '(a+b)^2 = a^2 + 2ab + b^2'],
+      ['세제곱의 인수분해', 'a^3 - b^3 = (a-b)(a^2 + ab + b^2)'],
+      ['이항정리', '(x+y)^n = \\sum_{k=0}^{n} \\binom{n}{k} x^{n-k} y^{k}'],
+      ['지수법칙', 'a^m \\cdot a^n = a^{m+n}, \\qquad (a^m)^n = a^{mn}'],
+      ['로그의 성질', '\\log_a (xy) = \\log_a x + \\log_a y'],
+      ['밑변환 공식', '\\log_a b = \\frac{\\log_c b}{\\log_c a}'],
+      ['삼각부등식', '|a + b| \\le |a| + |b|'],
+      ['산술·기하 평균', '\\frac{a+b}{2} \\ge \\sqrt{ab} \\quad (a, b \\ge 0)'],
+      ['복소수', 'z = a + bi = r(\\cos\\theta + i\\sin\\theta)']
+    ]},
+    { cat: '함수·삼각함수', items: [
+      ['피타고라스 정리', 'a^2 + b^2 = c^2'],
+      ['삼각함수 항등식', '\\sin^2\\theta + \\cos^2\\theta = 1'],
+      ['덧셈정리', '\\sin(\\alpha \\pm \\beta) = \\sin\\alpha\\cos\\beta \\pm \\cos\\alpha\\sin\\beta'],
+      ['사인법칙', '\\frac{a}{\\sin A} = \\frac{b}{\\sin B} = \\frac{c}{\\sin C} = 2R'],
+      ['코사인법칙', 'c^2 = a^2 + b^2 - 2ab\\cos C'],
+      ['오일러 공식', 'e^{i\\theta} = \\cos\\theta + i\\sin\\theta'],
+      ['오일러 항등식', 'e^{i\\pi} + 1 = 0'],
+      ['구간별로 정의된 함수', 'f(x) = \\begin{cases} x^2 & (x \\ge 0) \\\\ -x & (x < 0) \\end{cases}'],
+      ['합성함수', '(g \\circ f)(x) = g\\bigl(f(x)\\bigr)'],
+      ['원의 방정식', '(x-a)^2 + (y-b)^2 = r^2']
+    ]},
+    { cat: '미분', items: [
+      ['극한', '\\lim_{x \\to a} f(x) = L'],
+      ['도함수의 정의', "f'(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}"],
+      ['곱의 미분법', "\\bigl(f(x)g(x)\\bigr)' = f'(x)g(x) + f(x)g'(x)"],
+      ['몫의 미분법', "\\left(\\frac{f}{g}\\right)' = \\frac{f'g - fg'}{g^2}"],
+      ['연쇄법칙', '\\frac{dy}{dx} = \\frac{dy}{du} \\cdot \\frac{du}{dx}'],
+      ['편미분', '\\frac{\\partial^2 u}{\\partial t^2} = c^2 \\nabla^2 u'],
+      ['기울기 벡터', '\\nabla f = \\left( \\frac{\\partial f}{\\partial x}, \\frac{\\partial f}{\\partial y}, \\frac{\\partial f}{\\partial z} \\right)'],
+      ['자연상수 e', 'e = \\lim_{n \\to \\infty} \\left( 1 + \\frac{1}{n} \\right)^{n}'],
+      ['로피탈 정리', "\\lim_{x \\to a} \\frac{f(x)}{g(x)} = \\lim_{x \\to a} \\frac{f'(x)}{g'(x)}"]
+    ]},
+    { cat: '적분', items: [
+      ['미적분의 기본정리', '\\int_{a}^{b} f(x)\\,dx = F(b) - F(a)'],
+      ['부분적분', '\\int u\\,dv = uv - \\int v\\,du'],
+      ['가우스 적분', '\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}'],
+      ['이중적분', '\\iint_{D} f(x, y)\\,dA = \\int_{a}^{b}\\!\\int_{c}^{d} f(x,y)\\,dy\\,dx'],
+      ['선적분 (스토크스)', '\\oint_{\\partial S} \\mathbf{F} \\cdot d\\mathbf{r} = \\iint_{S} (\\nabla \\times \\mathbf{F}) \\cdot d\\mathbf{S}'],
+      ['치환적분', "\\int f\\bigl(g(x)\\bigr)\\,g'(x)\\,dx = \\int f(u)\\,du"],
+      ['대입 표기', '\\int_0^1 x^2\\,dx = \\left. \\frac{x^3}{3} \\right|_0^1 = \\frac{1}{3}']
+    ]},
+    { cat: '수열·급수', items: [
+      ['등차수열의 합', 'S_n = \\frac{n(a_1 + a_n)}{2}'],
+      ['등비수열의 합', 'S_n = \\frac{a(1 - r^n)}{1 - r} \\quad (r \\ne 1)'],
+      ['테일러 급수', 'f(x) = \\sum_{n=0}^{\\infty} \\frac{f^{(n)}(a)}{n!} (x-a)^n'],
+      ['바젤 문제', '\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}'],
+      ['자연수 거듭제곱 합', '\\sum_{k=1}^{n} k^2 = \\frac{n(n+1)(2n+1)}{6}'],
+      ['무한곱 (월리스)', '\\prod_{n=1}^{\\infty} \\frac{4n^2}{4n^2 - 1} = \\frac{\\pi}{2}'],
+      ['연분수', '\\phi = 1 + \\cfrac{1}{1 + \\cfrac{1}{1 + \\cfrac{1}{1 + \\cdots}}}']
+    ]},
+    { cat: '행렬·벡터', items: [
+      ['2×2 행렬', 'A = \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}'],
+      ['행렬식', '\\det A = \\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix} = ad - bc'],
+      ['역행렬', 'A^{-1} = \\frac{1}{ad - bc} \\begin{pmatrix} d & -b \\\\ -c & a \\end{pmatrix}'],
+      ['연립방정식의 행렬 표현', '\\begin{bmatrix} 2 & 1 & -1 \\\\ -3 & -1 & 2 \\\\ -2 & 1 & 2 \\end{bmatrix} \\begin{bmatrix} x \\\\ y \\\\ z \\end{bmatrix} = \\begin{bmatrix} 8 \\\\ -11 \\\\ -3 \\end{bmatrix}'],
+      ['m×n 행렬', 'A = \\begin{pmatrix} a_{11} & a_{12} & \\cdots & a_{1n} \\\\ a_{21} & a_{22} & \\cdots & a_{2n} \\\\ \\vdots & \\vdots & \\ddots & \\vdots \\\\ a_{m1} & a_{m2} & \\cdots & a_{mn} \\end{pmatrix}'],
+      ['고윳값', 'A\\mathbf{v} = \\lambda \\mathbf{v}, \\qquad \\det(A - \\lambda I) = 0'],
+      ['내적', '\\mathbf{a} \\cdot \\mathbf{b} = |\\mathbf{a}|\\,|\\mathbf{b}| \\cos\\theta'],
+      ['외적', '\\mathbf{a} \\times \\mathbf{b} = \\begin{vmatrix} \\mathbf{i} & \\mathbf{j} & \\mathbf{k} \\\\ a_1 & a_2 & a_3 \\\\ b_1 & b_2 & b_3 \\end{vmatrix}'],
+      ['회전 행렬', 'R(\\theta) = \\begin{bmatrix} \\cos\\theta & -\\sin\\theta \\\\ \\sin\\theta & \\cos\\theta \\end{bmatrix}']
+    ]},
+    { cat: '확률·통계', items: [
+      ['평균', '\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i'],
+      ['표준편차', '\\sigma = \\sqrt{\\frac{1}{N} \\sum_{i=1}^{N} (x_i - \\mu)^2}'],
+      ['정규분포', 'f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} \\, e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}'],
+      ['베이즈 정리', 'P(A \\mid B) = \\frac{P(B \\mid A)\\,P(A)}{P(B)}'],
+      ['조합', '{}_{n}\\mathrm{C}_{r} = \\frac{n!}{r!\\,(n-r)!}'],
+      ['순열', '{}_{n}\\mathrm{P}_{r} = \\frac{n!}{(n-r)!}'],
+      ['이항분포', 'P(X = k) = \\binom{n}{k} p^{k} (1-p)^{n-k}'],
+      ['기댓값과 분산', 'E(X) = \\sum_{i} x_i p_i, \\qquad V(X) = E(X^2) - \\{E(X)\\}^2'],
+      ['표준화', 'Z = \\frac{X - \\mu}{\\sigma} \\sim N(0, 1^2)']
+    ]},
+    { cat: '집합·논리', items: [
+      ['드모르간 법칙', '\\overline{A \\cup B} = \\overline{A} \\cap \\overline{B}'],
+      ['조건제시법', 'A = \\{\\, x \\in \\mathbb{R} \\mid x^2 < 4 \\,\\}'],
+      ['포함·배제 원리', 'n(A \\cup B) = n(A) + n(B) - n(A \\cap B)'],
+      ['엡실론-델타 논법', '\\forall \\varepsilon > 0,\\ \\exists \\delta > 0 : 0 < |x-a| < \\delta \\Rightarrow |f(x) - L| < \\varepsilon'],
+      ['수의 체계', '\\mathbb{N} \\subset \\mathbb{Z} \\subset \\mathbb{Q} \\subset \\mathbb{R} \\subset \\mathbb{C}'],
+      ['명제의 대우', '(p \\rightarrow q) \\iff (\\neg q \\rightarrow \\neg p)']
+    ]},
+    { cat: '물리', items: [
+      ['질량-에너지 등가', 'E = mc^2'],
+      ['뉴턴 운동 제2법칙', '\\vec{F} = m\\vec{a} = \\frac{d\\vec{p}}{dt}'],
+      ['만유인력 법칙', 'F = G \\frac{m_1 m_2}{r^2}'],
+      ['등가속도 운동', 's = v_0 t + \\frac{1}{2} a t^2'],
+      ['쿨롱 법칙', 'F = \\frac{1}{4\\pi\\varepsilon_0} \\frac{q_1 q_2}{r^2}'],
+      ['슈뢰딩거 방정식', 'i\\hbar \\frac{\\partial}{\\partial t} \\Psi(\\mathbf{r}, t) = \\hat{H} \\Psi(\\mathbf{r}, t)'],
+      ['맥스웰 방정식', '\\begin{aligned} \\nabla \\cdot \\mathbf{E} &= \\frac{\\rho}{\\varepsilon_0} \\\\ \\nabla \\cdot \\mathbf{B} &= 0 \\\\ \\nabla \\times \\mathbf{E} &= -\\frac{\\partial \\mathbf{B}}{\\partial t} \\\\ \\nabla \\times \\mathbf{B} &= \\mu_0 \\mathbf{J} + \\mu_0 \\varepsilon_0 \\frac{\\partial \\mathbf{E}}{\\partial t} \\end{aligned}'],
+      ['브라-켓 표기', '\\langle \\psi \\mid \\hat{A} \\mid \\phi \\rangle'],
+      ['이상기체 상태방정식', 'PV = nRT']
+    ]},
+    { cat: '항공·드론', items: [
+      ['양력', 'L = \\frac{1}{2} \\rho v^2 S C_L'],
+      ['항력', 'D = \\frac{1}{2} \\rho v^2 S C_D'],
+      ['프로펠러 추력', 'T = C_T \\, \\rho \\, n^2 D^4'],
+      ['호버링 이상 전력', 'P_{\\text{hover}} = \\frac{T^{3/2}}{\\sqrt{2 \\rho A}}'],
+      ['추력 대 중량비', '\\text{TWR} = \\frac{\\sum_{i=1}^{4} T_i}{m g}'],
+      ['비행 시간 추정', 't_{\\text{flight}} = \\frac{C_{\\text{bat}} \\cdot V \\cdot \\eta}{P_{\\text{avg}}}'],
+      ['쿼드콥터 자세 동역학', '\\begin{aligned} \\tau_\\phi &= l\\,(T_4 - T_2) \\\\ \\tau_\\theta &= l\\,(T_3 - T_1) \\\\ \\tau_\\psi &= \\sum_{i=1}^{4} (-1)^{i+1} Q_i \\end{aligned}']
+    ]},
+    { cat: '화학', items: [
+      ['물의 생성', '\\ce{2H2 + O2 -> 2H2O}'],
+      ['암모니아 합성 (평형)', '\\ce{N2 + 3H2 <=> 2NH3}'],
+      ['중화 반응', '\\ce{HCl + NaOH -> NaCl + H2O}'],
+      ['광합성', '\\ce{6CO2 + 6H2O ->[\\text{빛}] C6H12O6 + 6O2}'],
+      ['침전 반응', '\\ce{Ag+ + Cl- -> AgCl v}'],
+      ['이온과 전하', '\\ce{SO4^2-}, \\quad \\ce{Fe^3+}, \\quad \\ce{NH4+}'],
+      ['평형 상수', 'K = \\frac{[\\ce{NH3}]^2}{[\\ce{N2}][\\ce{H2}]^3}'],
+      ['방사성 붕괴', '\\ce{^{238}_{92}U -> ^{234}_{90}Th + ^{4}_{2}He}']
+    ]},
+    { cat: '여러 줄·정렬', items: [
+      ['등호 맞춤 전개', '\\begin{aligned} f(x) &= (x+1)^2 \\\\ &= x^2 + 2x + 1 \\end{aligned}'],
+      ['연립방정식', '\\begin{cases} 2x + y = 5 \\\\ x - y = 1 \\end{cases}'],
+      ['식 번호 붙이기', 'E = mc^2 \\tag{1}'],
+      ['표 (배열)', '\\begin{array}{c|ccc} x & 1 & 2 & 3 \\\\ \\hline f(x) & 1 & 4 & 9 \\end{array}'],
+      ['가운데 모음', '\\begin{gathered} a + b = c \\\\ x^2 + y^2 = z^2 \\end{gathered}'],
+      ['증감표', '\\begin{array}{c|ccccc} x & \\cdots & -1 & \\cdots & 1 & \\cdots \\\\ \\hline f\'(x) & + & 0 & - & 0 & + \\\\ f(x) & \\nearrow & 2 & \\searrow & -2 & \\nearrow \\end{array}']
+    ]},
+    { cat: '꾸밈·한글', items: [
+      ['한글 글자 섞기', '\\text{속력} = \\frac{\\text{거리}}{\\text{시간}}'],
+      ['묶음괄호 설명', '\\underbrace{1 + 2 + \\cdots + n}_{n\\text{개}} = \\frac{n(n+1)}{2}'],
+      ['부분 색상', '\\textcolor{#c62828}{a^2} + \\textcolor{#1565c0}{b^2} = \\textcolor{#2e7d32}{c^2}'],
+      ['약분 표시', '\\frac{\\cancel{x}\\, y}{\\cancel{x}\\, z} = \\frac{y}{z}'],
+      ['결과 강조 상자', '\\boxed{\\, x = 3 \\,}'],
+      ['정의 기호', 'f(x) \\overset{\\text{def}}{=} x^2 + 1'],
+      ['글자 얹은 화살표', 'A \\xrightarrow{\\text{변환}} B \\xrightarrow[\\text{역}]{} C'],
+      ['글꼴 모음', '\\mathbb{R} \\ \\mathcal{L} \\ \\mathfrak{g} \\ \\mathscr{F} \\ \\mathbf{v} \\ \\boldsymbol{\\omega}']
+    ]}
+  ];
+
+  var SWATCHES = [
+    ['#000000', '검정'], ['#333333', '진회색'], ['#ffffff', '흰색'], ['#1f3a93', '남색'], ['#1565c0', '파랑'],
+    ['#00838f', '청록'], ['#2e7d32', '초록'], ['#c62828', '빨강'], ['#ef6c00', '주황'], ['#6a1b9a', '보라']
+  ];
+
+  /* ───────────── 상태 ───────────── */
+  var STORE_KEY = 'formula-editor-v1';
+  var state = {
+    tex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}',
+    color: '#000000', size: 48, pad: 12, scale: 2, display: true, bg: 'checker',
+    gallery: null
+  };
+  var selected = new Set();
+  var ready = false;
+  var currentSvg = null; // 현재 미리보기 SVG 원본 (MathJax 출력)
+  var lastPngUrl = null, lastPngBlob = null;
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        ['tex', 'color', 'size', 'pad', 'scale', 'display', 'bg', 'gallery'].forEach(function (k) { if (s[k] !== undefined) state[k] = s[k]; });
+      }
+    } catch (e) { /* 저장소를 쓸 수 없으면 기본값 사용 */ }
+    if (!Array.isArray(state.gallery)) {
+      state.gallery = [
+        mkItem('e^{i\\pi} + 1 = 0', '#000000', 48, true, '예시 · 오일러 항등식'),
+        mkItem('\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}', '#1f3a93', 48, true, '예시 · 가우스 적분'),
+        mkItem('\\ce{2H2 + O2 -> 2H2O}', '#c62828', 48, true, '예시 · 화학 반응식')
+      ];
+    }
+  }
+  var saveTimer = null;
+  function persist() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 무시 */ }
+    }, 250);
+  }
+  function mkItem(tex, color, size, display, name) {
+    return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), tex: tex, color: color, size: size, display: display, name: name || '' };
+  }
+
+  /* ───────────── 알림 ───────────── */
+  function toast(msg, kind) {
+    var t = document.createElement('div');
+    t.className = 'toast' + (kind === 'error' ? ' error' : '');
+    t.textContent = msg;
+    var box = $('#toasts');
+    while (box.children.length >= 3) box.firstChild.remove();
+    box.appendChild(t);
+    setTimeout(function () { t.remove(); }, kind === 'error' ? 4200 : 2400);
+  }
+
+  /* ───────────── 수식 → SVG ───────────── */
+  function texToSvg(tex, display) {
+    try {
+      var node = MathJax.tex2svg(tex, { display: display, em: 16, ex: 8, containerWidth: 1600 });
+      var svg = node.querySelector('svg');
+      if (!svg) return { error: '수식을 그리지 못했습니다.' };
+      var merr = svg.querySelector('[data-mml-node="merror"]');
+      if (merr) return { error: merr.getAttribute('data-mjx-error') || merr.textContent || '수식 오류' };
+      return { svg: svg };
+    } catch (err) {
+      return { error: translateError(err && err.message ? err.message : String(err)) };
+    }
+  }
+  function translateError(m) {
+    var rules = [
+      [/Undefined control sequence (\\\S+)/, '알 수 없는 명령어입니다: $1'],
+      [/Missing close brace/, '닫는 중괄호 } 가 빠졌습니다.'],
+      [/Extra close brace or missing open brace/, '여는 중괄호 { 가 빠졌거나 } 가 하나 더 있습니다.'],
+      [/Extra open brace or missing close brace/, '닫는 중괄호 } 가 빠졌습니다.'],
+      [/Missing argument for (\\\S+)/, '$1 명령어에 들어갈 내용이 없습니다.'],
+      [/Double exponent/, '지수(^)가 두 번 연달아 쓰였습니다. 중괄호로 묶어 주세요. 예: {x^a}^b'],
+      [/Double subscripts/, '아래첨자(_)가 두 번 연달아 쓰였습니다. 중괄호로 묶어 주세요.'],
+      [/Missing \\right or extra \\left|Extra \\left/, '\\left 에 짝이 되는 \\right 가 없습니다.'],
+      [/Extra \\right|Missing \\left/, '\\right 에 짝이 되는 \\left 가 없습니다.'],
+      [/Missing \\end\{(\w+\*?)\}|Missing \\end/, '\\begin 에 짝이 되는 \\end 가 없습니다.'],
+      [/Unknown environment '([^']+)'/, '알 수 없는 환경입니다: $1'],
+      [/Misplaced &/, '& 는 행렬이나 정렬(aligned) 안에서만 쓸 수 있습니다.'],
+      [/Prime causes double exponent/, "프라임(')과 지수가 겹칩니다. 중괄호로 묶어 주세요."]
+    ];
+    for (var i = 0; i < rules.length; i++) {
+      var mm = m.match(rules[i][0]);
+      if (mm) return rules[i][1].replace('$1', mm[1] || '');
+    }
+    return '수식 오류: ' + m;
+  }
+
+  // MathJax SVG를 지정한 색·크기의 독립 SVG로 만든다 (viewBox 1000 단위 = 1em)
+  function prepare(svg, color, sizePx) {
+    var clone = svg.cloneNode(true);
+    var EX = 0.442; // MathJax TeX 글꼴의 x-height (1ex = 0.442em)
+    var vbAttr = clone.getAttribute('viewBox');
+    var w, h;
+    if (vbAttr) {
+      var vb = vbAttr.trim().split(/[\s,]+/).map(Number);
+      w = vb[2] / 1000 * sizePx; h = vb[3] / 1000 * sizePx;
+    } else {
+      // 식 번호(\tag)가 있으면 너비가 100%로 나오므로 min-width(ex)를 쓴다
+      var mw = /min-width:\s*([\d.]+)ex/.exec(clone.getAttribute('style') || '');
+      var hh = /([\d.]+)ex/.exec(clone.getAttribute('height') || '');
+      w = (mw ? +mw[1] : 10) * EX * sizePx;
+      h = (hh ? +hh[1] : 2) * EX * sizePx;
+    }
+    w = Math.max(1, w); h = Math.max(1, h);
+    clone.setAttribute('width', w.toFixed(2));
+    clone.setAttribute('height', h.toFixed(2));
+    clone.removeAttribute('style');
+    clone.removeAttribute('focusable');
+    clone.removeAttribute('role');
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.style.color = color;
+    var str = new XMLSerializer().serializeToString(clone).replace(/currentColor/g, color);
+    return { el: clone, str: str, w: w, h: h };
+  }
+
+  function loadImage(src) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () { res(img); };
+      img.onerror = function () { rej(new Error('이미지 변환에 실패했습니다.')); };
+      img.src = src;
+    });
+  }
+
+  var MAX_SIDE = 16000;
+  // 수식 하나를 투명 캔버스로 그린다
+  async function renderCanvas(tex, color, sizePx, display, scale, pad) {
+    var r = texToSvg(tex, display);
+    if (r.error) throw new Error(r.error);
+    var p = prepare(r.svg, color, sizePx);
+    var s = scale;
+    var W = (p.w + pad * 2) * s, H = (p.h + pad * 2) * s;
+    if (W > MAX_SIDE || H > MAX_SIDE) {
+      s = s * Math.min(MAX_SIDE / W, MAX_SIDE / H);
+      W = (p.w + pad * 2) * s; H = (p.h + pad * 2) * s;
+    }
+    var img = await loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(p.str));
+    var c = document.createElement('canvas');
+    c.width = Math.ceil(W); c.height = Math.ceil(H);
+    var ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, pad * s, pad * s, p.w * s, p.h * s);
+    return { canvas: c, svgStr: p.str, scaleUsed: s };
+  }
+  function canvasToBlob(c) {
+    return new Promise(function (res, rej) {
+      c.toBlob(function (b) { b ? res(b) : rej(new Error('PNG를 만들지 못했습니다.')); }, 'image/png');
+    });
+  }
+
+  /* ───────────── 파일 저장 ───────────── */
+  var inViewer = !!(window.claude && typeof window.claude.use === 'function');
+  var dlPromise = inViewer ? Promise.resolve(window.claude.use('downloads')).catch(function () { return null; }) : Promise.resolve(null);
+
+  async function saveFile(filename, blob) {
+    if (inViewer) {
+      var dl = await dlPromise;
+      if (!dl) { toast('이 화면에서는 파일 저장을 쓸 수 없습니다. 이미지 복사를 이용하세요.', 'error'); return false; }
+      try {
+        await dl.save({ filename: filename, data: blob });
+        toast('저장했습니다: ' + filename);
+        return true;
+      } catch (e) {
+        var code = e && e.code;
+        if (code === 'declined') toast('저장을 취소했습니다.');
+        else if (code === 'rate_limited') toast('저장 창이 이미 열려 있습니다. 잠시 후 다시 시도하세요.', 'error');
+        else toast('저장하지 못했습니다' + (e && e.message ? ': ' + e.message : '.'), 'error');
+        return false;
+      }
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    toast('저장했습니다: ' + filename);
+    return true;
+  }
+  function stamp() {
+    var d = new Date(), z = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+  }
+  function safeName(name, fallback) {
+    var n = (name || '').replace(/^예시\s*·\s*/, '').replace(/[\\/:*?"<>|\n\r\t]+/g, ' ').trim().slice(0, 60);
+    return n || fallback;
+  }
+  async function copyImage(blob) {
+    try {
+      if (!navigator.clipboard || !window.ClipboardItem) throw new Error('unsupported');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('PNG 이미지를 클립보드에 복사했습니다.');
+    } catch (e) {
+      toast('이 환경에서는 이미지 복사가 막혀 있습니다. PNG 저장을 이용하세요.', 'error');
+    }
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); toast('LaTeX 코드를 복사했습니다.'); }
+    catch (e) {
+      var ta = $('#tex'); ta.focus(); ta.select();
+      toast('복사가 막혀 있어 코드를 선택해 두었습니다. Ctrl+C로 복사하세요.', 'error');
+    }
+  }
+
+  /* ───────────── 입력 ───────────── */
+  var ta = $('#tex');
+  function insertSnippet(snip) {
+    ta.focus();
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    var sel = ta.value.slice(s, e);
+    var text = snip, cursor;
+    var i = text.indexOf('§');
+    if (i < 0) {
+      // 글자로 끝나는 명령어 뒤에 글자가 이어지면 공백을 붙인다
+      var next = ta.value.charAt(e);
+      if (/\\[a-zA-Z]+$/.test(text) && /[a-zA-Z]/.test(next)) text += ' ';
+      cursor = s + text.length;
+    } else {
+      text = text.slice(0, i) + sel + text.slice(i + 1);
+      var j = text.indexOf('§', i + sel.length);
+      cursor = s + (sel && j >= 0 ? j : i + sel.length);
+      text = text.replace(/§/g, '');
+    }
+    ta.setSelectionRange(s, e);
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch (err) { ok = false; }
+    if (!ok || ta.value.slice(s, s + text.length) !== text) {
+      ta.setRangeText(text, s, e, 'end');
+    }
+    ta.setSelectionRange(cursor, cursor);
+    onInput();
+  }
+
+  var renderTimer = null;
+  function onInput() {
+    state.tex = ta.value;
+    persist();
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(renderPreview, 110);
+  }
+
+  function renderPreview() {
+    if (!ready) return;
+    var box = $('#preview'), err = $('#err'), meta = $('#meta');
+    var tex = state.tex.trim();
+    currentSvg = null;
+    if (!tex) {
+      box.innerHTML = '<span class="empty">수식을 입력하면 여기에 나타납니다.</span>';
+      err.hidden = true; meta.textContent = '';
+      setExportEnabled(false);
+      return;
+    }
+    var r = texToSvg(tex, state.display);
+    if (r.error) {
+      err.textContent = r.error; err.hidden = false;
+      setExportEnabled(false);
+      box.style.opacity = '.35';
+      return;
+    }
+    err.hidden = true; box.style.opacity = '';
+    currentSvg = r.svg;
+    var p = prepare(r.svg, state.color, state.size);
+    box.innerHTML = '';
+    box.appendChild(p.el);
+    var W = Math.ceil((p.w + state.pad * 2) * state.scale), H = Math.ceil((p.h + state.pad * 2) * state.scale);
+    meta.innerHTML = '';
+    [['출력 크기', W + ' × ' + H + ' px'], ['배율', state.scale + '×'], ['여백', state.pad + 'px'], ['배경', '투명']].forEach(function (kv) {
+      var sp = document.createElement('span'); sp.textContent = kv[0] + ' ';
+      var b = document.createElement('b'); b.textContent = kv[1]; sp.appendChild(b); meta.appendChild(sp);
+    });
+    setExportEnabled(true);
+  }
+  function setExportEnabled(on) {
+    ['#dlPng', '#cpPng', '#dlSvg', '#addGal', '#openPng'].forEach(function (s) { $(s).disabled = !on; });
+  }
+
+  /* ───────────── 기호판 ───────────── */
+  var palIndex = 0;
+  function buildTabs() {
+    var tabs = $('#palTabs');
+    PALETTE.forEach(function (cat, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'tab'; b.setAttribute('role', 'tab'); b.textContent = cat.name;
+      b.setAttribute('aria-selected', i === palIndex ? 'true' : 'false');
+      b.addEventListener('click', function () { palIndex = i; $$('.tab', tabs).forEach(function (t, k) { t.setAttribute('aria-selected', k === i ? 'true' : 'false'); }); renderPalette(); });
+      tabs.appendChild(b);
+    });
+  }
+  var symCache = {};
+  function symSvg(tex) {
+    if (symCache[tex]) return symCache[tex].cloneNode(true);
+    var r = texToSvg(tex, false);
+    if (r.error) return null;
+    symCache[tex] = r.svg;
+    return r.svg.cloneNode(true);
+  }
+  function renderPalette() {
+    var cat = PALETTE[palIndex], pal = $('#palette');
+    pal.className = 'palette' + (cat.wide ? ' wide' : '');
+    pal.innerHTML = '';
+    cat.items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'sym';
+      var code = it[0].replace(/§/g, '');
+      b.title = it[2] + '  ' + code;
+      b.setAttribute('aria-label', it[2]);
+      var svg = ready ? symSvg(it[1] || it[0].replace(/§/g, '')) : null;
+      if (svg) b.appendChild(svg); else b.textContent = code;
+      b.addEventListener('click', function () { insertSnippet(it[0]); });
+      pal.appendChild(b);
+    });
+  }
+
+  /* ───────────── 설정 ───────────── */
+  function normHex(v) {
+    v = String(v || '').trim();
+    if (/^#?[0-9a-f]{3}$/i.test(v)) { v = v.replace('#', ''); v = '#' + v[0] + v[0] + v[1] + v[1] + v[2] + v[2]; }
+    else if (/^#?[0-9a-f]{6}$/i.test(v)) { v = '#' + v.replace('#', ''); }
+    else return null;
+    return v.toLowerCase();
+  }
+  function setColor(c) {
+    var n = normHex(c); if (!n) return;
+    state.color = n;
+    $('#colorPick').value = n;
+    if (document.activeElement !== $('#hex')) $('#hex').value = n.toUpperCase();
+    $$('.swatch').forEach(function (s) { s.setAttribute('aria-pressed', s.dataset.c === n ? 'true' : 'false'); });
+    persist(); renderPreview();
+  }
+  function buildSwatches() {
+    var row = $('#swatches'), pick = $('.color-pick', row);
+    SWATCHES.forEach(function (sw) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.dataset.c = sw[0];
+      b.style.background = sw[0]; b.title = sw[1]; b.setAttribute('aria-label', sw[1]);
+      b.addEventListener('click', function () { setColor(sw[0]); });
+      row.insertBefore(b, pick);
+    });
+  }
+  function bindSeg(id, getV, setV) {
+    var seg = $(id);
+    function sync() { $$('button', seg).forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === String(getV()) ? 'true' : 'false'); }); }
+    $$('button', seg).forEach(function (b) { b.addEventListener('click', function () { setV(b.dataset.v); sync(); persist(); renderPreview(); }); });
+    sync();
+  }
+  function bindBgToggle(group, frame, onSet) {
+    $$('button', group).forEach(function (b) {
+      b.addEventListener('click', function () {
+        $$('button', group).forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        frame.classList.remove('bg-checker', 'bg-white', 'bg-black');
+        frame.classList.add('bg-' + b.dataset.bg);
+        if (onSet) onSet(b.dataset.bg);
+      });
+    });
+  }
+
+  /* ───────────── 내보내기 (현재 수식) ───────────── */
+  async function currentPng() {
+    var r = await renderCanvas(state.tex.trim(), state.color, state.size, state.display, state.scale, state.pad);
+    var blob = await canvasToBlob(r.canvas);
+    return { blob: blob, canvas: r.canvas, svgStr: r.svgStr, scaleUsed: r.scaleUsed };
+  }
+  async function doDlPng() {
+    if (!currentSvg) return;
+    try { var r = await currentPng(); await saveFile('수식-' + stamp() + '.png', r.blob); }
+    catch (e) { toast(e.message, 'error'); }
+  }
+  async function doCpPng() {
+    if (!currentSvg) return;
+    try { var r = await currentPng(); await copyImage(r.blob); } catch (e) { toast(e.message, 'error'); }
+  }
+  async function doDlSvg() {
+    if (!currentSvg) return;
+    var p = prepare(currentSvg, state.color, state.size);
+    var blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + p.str], { type: 'image/svg+xml' });
+    await saveFile('수식-' + stamp() + '.svg', blob);
+  }
+  function addToGallery() {
+    if (!currentSvg) return;
+    var it = mkItem(state.tex.trim(), state.color, state.size, state.display, '');
+    state.gallery.unshift(it);
+    persist(); renderGallery();
+    toast('보관함에 추가했습니다.');
+  }
+
+  async function openPngPreview() {
+    if (!currentSvg) return;
+    try {
+      var r = await currentPng();
+      if (lastPngUrl) URL.revokeObjectURL(lastPngUrl);
+      lastPngBlob = r.blob; lastPngUrl = URL.createObjectURL(r.blob);
+      var img = $('#pngImg');
+      img.src = lastPngUrl;
+      img.style.width = (r.canvas.width / state.scale) + 'px';
+      var kb = (r.blob.size / 1024).toFixed(1);
+      $('#pngMeta').innerHTML = '';
+      [['실제 크기', r.canvas.width + ' × ' + r.canvas.height + ' px'], ['파일 크기', kb + ' KB'], ['배율', (Math.round(r.scaleUsed * 100) / 100) + '×'], ['배경', '투명 (알파 채널)'], ['글자 색', state.color.toUpperCase()]].forEach(function (kv) {
+        var sp = document.createElement('span'); sp.textContent = kv[0] + ' ';
+        var b = document.createElement('b'); b.textContent = kv[1]; sp.appendChild(b); $('#pngMeta').appendChild(sp);
+      });
+      if (r.scaleUsed < state.scale) toast('이미지가 너무 커서 배율을 줄여 만들었습니다.', 'error');
+      $('#pngDlg').showModal();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  /* ───────────── 보관함 ───────────── */
+  function renderGallery() {
+    var grid = $('#galGrid');
+    grid.innerHTML = '';
+    var ids = new Set(state.gallery.map(function (g) { return g.id; }));
+    selected.forEach(function (id) { if (!ids.has(id)) selected.delete(id); });
+    $('#galEmpty').hidden = state.gallery.length > 0;
+    state.gallery.forEach(function (it, idx) {
+      var card = document.createElement('article');
+      card.className = 'item' + (selected.has(it.id) ? ' sel' : '');
+
+      var thumb = document.createElement('div');
+      thumb.className = 'item-thumb bg-checker';
+      thumb.title = '눌러서 선택';
+      var r = ready ? texToSvg(it.tex, it.display) : { error: '불러오는 중' };
+      if (r.svg) thumb.appendChild(prepare(r.svg, it.color, it.size).el);
+      else { var sp = document.createElement('span'); sp.className = 'empty'; sp.textContent = r.error; thumb.appendChild(sp); }
+      thumb.addEventListener('click', function () { toggleSel(it.id); });
+
+      var body = document.createElement('div'); body.className = 'item-body';
+      var top = document.createElement('div'); top.className = 'item-top';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selected.has(it.id);
+      cb.id = 'sel-' + it.id; cb.setAttribute('aria-label', '선택');
+      cb.addEventListener('change', function () { toggleSel(it.id); });
+      var name = document.createElement('input'); name.type = 'text'; name.className = 'item-name';
+      name.id = 'name-' + it.id; name.value = it.name || ''; name.placeholder = '수식 ' + (state.gallery.length - idx);
+      name.setAttribute('aria-label', '이름 (파일 이름으로 쓰임)');
+      name.addEventListener('input', function () { it.name = name.value; persist(); });
+      var dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = it.color; dot.title = '글자 색 ' + it.color.toUpperCase();
+      top.appendChild(cb); top.appendChild(name); top.appendChild(dot);
+
+      var code = document.createElement('p'); code.className = 'item-code'; code.textContent = it.tex; code.title = it.tex;
+
+      var act = document.createElement('div'); act.className = 'item-actions';
+      act.appendChild(mkBtn('편집기로 불러오기', 'btn sm soft', function () { loadIntoEditor(it); }));
+      act.appendChild(mkBtn('PNG', 'btn sm', function () { exportItems([it]); }));
+      act.appendChild(mkBtn('복사', 'btn sm', async function () {
+        try { var c = await renderCanvas(it.tex, it.color, it.size, it.display, state.scale, state.pad); copyImage(await canvasToBlob(c.canvas)); }
+        catch (e) { toast(e.message, 'error'); }
+      }));
+      act.appendChild(mkBtn('삭제', 'btn sm ghost danger', function () {
+        state.gallery = state.gallery.filter(function (g) { return g.id !== it.id; });
+        selected.delete(it.id); persist(); renderGallery();
+      }));
+
+      body.appendChild(top); body.appendChild(code); body.appendChild(act);
+      card.appendChild(thumb); card.appendChild(body);
+      grid.appendChild(card);
+    });
+    updateSelUi();
+  }
+  function mkBtn(label, cls, fn) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label;
+    b.addEventListener('click', fn); return b;
+  }
+  function toggleSel(id) {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    renderGallery();
+  }
+  function updateSelUi() {
+    var n = selected.size, total = state.gallery.length;
+    $('#galCount').textContent = total ? (n ? total + '개 중 ' + n + '개 선택' : total + '개') : '';
+    ['#selPng', '#selZip', '#selMerge', '#selColor', '#selDel', '#selNone'].forEach(function (s) { $(s).disabled = n === 0; });
+    $('#selAll').disabled = total === 0 || n === total;
+    if (!window.JSZip) $('#selZip').disabled = true;
+  }
+  function selItems() { return state.gallery.filter(function (g) { return selected.has(g.id); }); }
+  function loadIntoEditor(it) {
+    ta.value = it.tex; state.tex = it.tex;
+    state.size = it.size; $('#size').value = it.size; $('#sizeOut').textContent = it.size + 'px';
+    state.display = it.display;
+    $$('#modeSeg button').forEach(function (b) { b.setAttribute('aria-pressed', (b.dataset.v === 'display') === it.display ? 'true' : 'false'); });
+    setColor(it.color);
+    persist(); renderPreview();
+    ta.focus();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast('편집기로 불러왔습니다.');
+  }
+  function itemFileName(it, i) {
+    return safeName(it.name, '수식-' + String(i + 1).padStart(2, '0')) + '.png';
+  }
+  async function exportItems(items) {
+    for (var i = 0; i < items.length; i++) {
+      try {
+        var c = await renderCanvas(items[i].tex, items[i].color, items[i].size, items[i].display, state.scale, state.pad);
+        var ok = await saveFile(itemFileName(items[i], state.gallery.indexOf(items[i])), await canvasToBlob(c.canvas));
+        if (!ok && inViewer) break;
+      } catch (e) { toast(e.message, 'error'); }
+    }
+  }
+  async function exportZip(items) {
+    if (!window.JSZip) { toast('ZIP 기능을 불러오지 못했습니다. 개별 저장을 이용하세요.', 'error'); return; }
+    try {
+      var zip = new JSZip(), used = {};
+      for (var i = 0; i < items.length; i++) {
+        var c = await renderCanvas(items[i].tex, items[i].color, items[i].size, items[i].display, state.scale, state.pad);
+        var nm = itemFileName(items[i], state.gallery.indexOf(items[i]));
+        if (used[nm]) { nm = nm.replace(/\.png$/, '-' + (++used[nm]) + '.png'); } else used[nm] = 1;
+        zip.file(nm, await canvasToBlob(c.canvas));
+      }
+      var lines = items.map(function (it, k) { return (it.name || ('수식 ' + (k + 1))) + '\n' + it.tex + '\n'; }).join('\n');
+      zip.file('수식-코드.txt', lines);
+      var blob = await zip.generateAsync({ type: 'blob' });
+      await saveFile('수식-모음-' + stamp() + '.zip', blob);
+    } catch (e) { toast(e.message || 'ZIP을 만들지 못했습니다.', 'error'); }
+  }
+  async function exportMerged(items) {
+    try {
+      var canv = [];
+      for (var i = 0; i < items.length; i++) {
+        canv.push((await renderCanvas(items[i].tex, items[i].color, items[i].size, items[i].display, state.scale, state.pad)).canvas);
+      }
+      var dir = $('#mergeDir').value, align = $('#mergeAlign').value;
+      var gap = Math.max(0, Number($('#mergeGap').value) || 0) * state.scale;
+      var W, H;
+      if (dir === 'v') {
+        W = Math.max.apply(null, canv.map(function (c) { return c.width; }));
+        H = canv.reduce(function (s, c) { return s + c.height; }, 0) + gap * (canv.length - 1);
+      } else {
+        W = canv.reduce(function (s, c) { return s + c.width; }, 0) + gap * (canv.length - 1);
+        H = Math.max.apply(null, canv.map(function (c) { return c.height; }));
+      }
+      if (W > 32000 || H > 32000 || W * H > 260e6) { toast('합친 이미지가 너무 큽니다. 항목 수나 배율을 줄여 주세요.', 'error'); return; }
+      var out = document.createElement('canvas'); out.width = Math.ceil(W); out.height = Math.ceil(H);
+      var ctx = out.getContext('2d'), pos = 0;
+      canv.forEach(function (c) {
+        var off;
+        if (dir === 'v') {
+          off = align === 'start' ? 0 : align === 'end' ? W - c.width : (W - c.width) / 2;
+          ctx.drawImage(c, Math.round(off), pos); pos += c.height + gap;
+        } else {
+          off = align === 'start' ? 0 : align === 'end' ? H - c.height : (H - c.height) / 2;
+          ctx.drawImage(c, pos, Math.round(off)); pos += c.width + gap;
+        }
+      });
+      await saveFile('수식-합본-' + stamp() + '.png', await canvasToBlob(out));
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  /* ───────────── 예시 창 ───────────── */
+  var exCat = 0;
+  var exCache = {};
+  function buildExampleCats() {
+    var nav = $('#exCats');
+    nav.innerHTML = '';
+    EXAMPLES.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', i === exCat ? 'true' : 'false');
+      b.innerHTML = '';
+      b.appendChild(document.createTextNode(c.cat));
+      var n = document.createElement('span'); n.textContent = c.items.length; b.appendChild(n);
+      b.addEventListener('click', function () {
+        exCat = i; $('#exSearch').value = '';
+        $$('button', nav).forEach(function (x, k) { x.setAttribute('aria-selected', k === i ? 'true' : 'false'); });
+        renderExamples();
+      });
+      nav.appendChild(b);
+    });
+  }
+  function renderExamples() {
+    var q = $('#exSearch').value.trim().toLowerCase();
+    var list = [];
+    if (q) {
+      EXAMPLES.forEach(function (c) { c.items.forEach(function (it) {
+        if ((c.cat + ' ' + it[0] + ' ' + it[1]).toLowerCase().indexOf(q) >= 0) list.push([it[0], it[1], c.cat]);
+      }); });
+    } else {
+      list = EXAMPLES[exCat].items.map(function (it) { return [it[0], it[1], '']; });
+    }
+    var grid = $('#exGrid');
+    grid.innerHTML = '';
+    if (!list.length) {
+      var e = document.createElement('p'); e.className = 'hint'; e.textContent = '"' + q + '"에 맞는 예시가 없습니다. 다른 낱말로 찾아보세요.';
+      grid.appendChild(e); return;
+    }
+    list.forEach(function (it) {
+      var card = document.createElement('div'); card.className = 'ex';
+      var t = document.createElement('div'); t.className = 'ex-title';
+      t.appendChild(document.createTextNode(it[0]));
+      if (it[2]) { var sm = document.createElement('small'); sm.textContent = it[2]; t.appendChild(sm); }
+      var m = document.createElement('div'); m.className = 'ex-math'; m.title = '눌러서 입력창에 넣기';
+      if (!exCache[it[1]]) { var r = texToSvg(it[1], true); exCache[it[1]] = r.svg || null; }
+      if (exCache[it[1]]) m.appendChild(exCache[it[1]].cloneNode(true)); else m.textContent = it[1];
+      m.addEventListener('click', function () { useExample(it[1], 'replace'); });
+      var code = document.createElement('pre'); code.className = 'ex-code'; code.textContent = it[1];
+      var act = document.createElement('div'); act.className = 'ex-actions';
+      act.appendChild(mkBtn('입력창에 바꿔 넣기', 'btn sm primary', function () { useExample(it[1], 'replace'); }));
+      act.appendChild(mkBtn('커서 위치에 삽입', 'btn sm', function () { useExample(it[1], 'insert'); }));
+      act.appendChild(mkBtn('보관함에 바로 추가', 'btn sm soft', function () {
+        state.gallery.unshift(mkItem(it[1], state.color, state.size, true, it[0]));
+        persist(); renderGallery(); toast('"' + it[0] + '"을(를) 보관함에 추가했습니다.');
+      }));
+      card.appendChild(t); card.appendChild(m); card.appendChild(code); card.appendChild(act);
+      grid.appendChild(card);
+    });
+  }
+  var savedSel = [0, 0];
+  function useExample(tex, how) {
+    $('#exDlg').close();
+    if (how === 'replace') {
+      ta.focus(); ta.select();
+      var ok = false;
+      try { ok = document.execCommand('insertText', false, tex); } catch (e) { ok = false; }
+      if (!ok || ta.value !== tex) ta.value = tex;
+      onInput();
+    } else {
+      ta.focus(); ta.setSelectionRange(savedSel[0], savedSel[1]);
+      insertSnippet(tex.replace(/§/g, ''));
+    }
+    toast('예시를 입력창에 넣었습니다.');
+  }
+
+  /* ───────────── 연결 ───────────── */
+  function bind() {
+    ta.addEventListener('input', onInput);
+    ta.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); addToGallery(); }
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); insertSnippet('  '); }
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); doDlPng(); }
+    });
+    $('#copyTex').addEventListener('click', function () { copyText(ta.value); });
+    $('#clearTex').addEventListener('click', function () { ta.focus(); ta.select(); try { document.execCommand('delete'); } catch (e) {} if (ta.value) ta.value = ''; onInput(); });
+
+    $('#colorPick').addEventListener('input', function (e) { setColor(e.target.value); });
+    $('#hex').addEventListener('input', function (e) { var n = normHex(e.target.value); if (n) setColor(n); });
+    $('#hex').addEventListener('blur', function () { $('#hex').value = state.color.toUpperCase(); });
+
+    $('#size').addEventListener('input', function (e) { state.size = +e.target.value; $('#sizeOut').textContent = state.size + 'px'; persist(); renderPreview(); });
+    $('#pad').addEventListener('input', function (e) { state.pad = +e.target.value; $('#padOut').textContent = state.pad + 'px'; persist(); renderPreview(); });
+    bindSeg('#scaleSeg', function () { return state.scale; }, function (v) { state.scale = +v; });
+    bindSeg('#modeSeg', function () { return state.display ? 'display' : 'inline'; }, function (v) { state.display = v === 'display'; });
+    bindBgToggle($('#output .view-toggle'), $('#stage'), function (bg) { state.bg = bg; persist(); });
+    bindBgToggle($('#pngBg'), $('#pngFrame'));
+    $('#pngFit').addEventListener('change', function (e) { $('#pngFrame').classList.toggle('fit', e.target.checked); });
+
+    $('#dlPng').addEventListener('click', doDlPng);
+    $('#cpPng').addEventListener('click', doCpPng);
+    $('#dlSvg').addEventListener('click', doDlSvg);
+    $('#addGal').addEventListener('click', addToGallery);
+    $('#openPng').addEventListener('click', openPngPreview);
+    $('#pngClose').addEventListener('click', function () { $('#pngDlg').close(); });
+    $('#pngSave').addEventListener('click', function () { if (lastPngBlob) saveFile('수식-' + stamp() + '.png', lastPngBlob); });
+    $('#pngCopy').addEventListener('click', function () { if (lastPngBlob) copyImage(lastPngBlob); });
+    $('#pngAdd').addEventListener('click', function () { addToGallery(); $('#pngDlg').close(); });
+
+    $('#selAll').addEventListener('click', function () { state.gallery.forEach(function (g) { selected.add(g.id); }); renderGallery(); });
+    $('#selNone').addEventListener('click', function () { selected.clear(); renderGallery(); });
+    $('#selPng').addEventListener('click', function () { exportItems(selItems()); });
+    $('#selZip').addEventListener('click', function () { exportZip(selItems()); });
+    $('#selMerge').addEventListener('click', function () { exportMerged(selItems()); });
+    $('#selColor').addEventListener('click', function () {
+      selItems().forEach(function (g) { g.color = state.color; });
+      persist(); renderGallery(); toast('선택한 항목의 글자 색을 ' + state.color.toUpperCase() + '(으)로 바꿨습니다.');
+    });
+    var delArmed = null;
+    $('#selDel').addEventListener('click', function () {
+      var b = $('#selDel');
+      if (!delArmed) {
+        b.textContent = selected.size + '개 정말 삭제'; delArmed = setTimeout(function () { delArmed = null; b.textContent = '선택 삭제'; }, 3000);
+        return;
+      }
+      clearTimeout(delArmed); delArmed = null; b.textContent = '선택 삭제';
+      state.gallery = state.gallery.filter(function (g) { return !selected.has(g.id); });
+      selected.clear(); persist(); renderGallery(); toast('선택한 항목을 삭제했습니다.');
+    });
+
+    $('#openExamples').addEventListener('click', function () {
+      savedSel = [ta.selectionStart, ta.selectionEnd];
+      $('#exDlg').showModal(); renderExamples(); $('#exSearch').focus();
+    });
+    $('#exClose').addEventListener('click', function () { $('#exDlg').close(); });
+    $('#exSearch').addEventListener('input', renderExamples);
+    [$('#exDlg'), $('#pngDlg')].forEach(function (d) {
+      d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    });
+  }
+
+  function syncControls() {
+    ta.value = state.tex;
+    $('#size').value = state.size; $('#sizeOut').textContent = state.size + 'px';
+    $('#pad').value = state.pad; $('#padOut').textContent = state.pad + 'px';
+    var bgBtn = $('#output .view-toggle button[data-bg="' + state.bg + '"]');
+    if (bgBtn) bgBtn.click();
+  }
+
+  load();
+  buildSwatches();
+  buildTabs();
+  buildExampleCats();
+  bind();
+  syncControls();
+  setColor(state.color);
+  renderPalette();
+  renderGallery();
+  setExportEnabled(false);
+
+  function start() {
+    ready = true;
+    renderPreview();
+    renderPalette();
+    renderGallery();
+  }
+  if (window.MathJax && MathJax.startup && MathJax.startup.promise) {
+    MathJax.startup.promise.then(start).catch(function (e) {
+      $('#preview').innerHTML = '<span class="empty">수식 엔진을 시작하지 못했습니다: ' + (e && e.message ? e.message : e) + '</span>';
+    });
+  } else {
+    $('#preview').innerHTML = '<span class="empty">수식 엔진(MathJax)을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로 고침하세요.</span>';
+  }
+})();
+</script>
+</body>
+</html>
