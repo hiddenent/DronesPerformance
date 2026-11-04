@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바다·날씨 예측</title>
+<!-- 외부 라이브러리는 jsDelivr CDN 한 곳만 사용 (Chart.js) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  /* ===== 색상·간격 기본값 ===== */
+  :root {
+    --bg: #f3f6fa;
+    --surface: #ffffff;
+    --text: #1b2733;
+    --muted: #5d6b7a;
+    --line: #dde3ea;
+    --accent: #1565c0;
+    --error: #c62828;
+    --error-bg: #fdecea;
+    --warn-bg: #fff6d6;
+    --warn-line: #e8c547;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    line-height: 1.5;
+    word-break: keep-all; /* 한국어 단어 단위 줄바꿈 */
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  header h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  header p { margin: 0 0 16px; color: var(--muted); font-size: .95rem; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 1.1rem; margin: 0 0 12px; }
+
+  /* ===== 상단 입력 영역 ===== */
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .field label { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 4px; }
+  .field select, .field input {
+    width: 100%;
+    font: inherit;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    min-height: 44px; /* 모바일 터치 영역 확보 */
+  }
+  .field input[aria-invalid="true"] { border-color: var(--error); outline-color: var(--error); }
+  .hint { font-size: .85rem; color: var(--muted); margin: 6px 0 0; }
+
+  /* 빨간 안내 문구 */
+  .error {
+    color: var(--error);
+    background: var(--error-bg);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 12px 0 0;
+    font-size: .92rem;
+    font-weight: 600;
+  }
+  .error:empty { display: none; }
+
+  /* 데이터 불러오기 상태 */
+  .status { font-size: .92rem; }
+  .status.bad { color: var(--error); }
+  .status pre {
+    background: #1b2733; color: #e8eef5;
+    padding: 8px 12px; border-radius: 8px;
+    overflow-x: auto; font-size: .85rem; margin: 8px 0;
+  }
+  .file-btn {
+    display: inline-block; margin-top: 8px;
+    padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--accent); color: var(--accent);
+    cursor: pointer; font-weight: 600; font-size: .9rem;
+  }
+  .file-btn input { display: none; }
+
+  .sample-banner {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: .9rem;
+    margin-bottom: 16px;
+  }
+
+  /* ===== 결과 카드 ===== */
+  .result-title { font-size: 1.1rem; margin: 0 0 4px; }
+  .result-sub { font-size: .85rem; color: var(--muted); margin: 0 0 12px; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--c, var(--accent));
+    border-radius: 10px;
+    padding: 12px;
+    background: #fff;
+    min-width: 0;
+  }
+  .card-head { font-size: .92rem; font-weight: 600; color: var(--muted); }
+  .card-value { font-size: 2rem; font-weight: 700; line-height: 1.2; margin: 4px 0; }
+  .card-value .unit { font-size: 1rem; font-weight: 600; margin-left: 2px; color: var(--muted); }
+  .card-range { font-size: .85rem; color: var(--muted); }
+  .card-range b { color: var(--text); font-weight: 600; }
+  .card-note {
+    display: inline-block; margin-top: 6px;
+    font-size: .78rem; padding: 2px 8px; border-radius: 999px;
+    background: #eef3f8; color: var(--text);
+  }
+  .card.missing .card-value { font-size: 1.15rem; color: var(--muted); padding: 8px 0; }
+
+  .empty {
+    text-align: center; color: var(--muted);
+    padding: 24px 8px; border: 1px dashed var(--line); border-radius: 10px;
+  }
+  .empty strong { display: block; font-size: 1.15rem; color: var(--text); margin-bottom: 4px; }
+
+  /* ===== 그래프 ===== */
+  .chart-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tab {
+    font: inherit; font-size: .88rem;
+    padding: 6px 12px; min-height: 36px;
+    border-radius: 999px; border: 1px solid var(--line);
+    background: #fff; color: var(--text); cursor: pointer;
+  }
+  .tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chart-bar select { font: inherit; font-size: .88rem; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); min-height: 36px; background: #fff; }
+  .chart-box { position: relative; height: 300px; }
+  .chart-msg {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    color: var(--muted); background: rgba(255,255,255,.85); padding: 16px;
+  }
+  .chart-msg[hidden] { display: none; }
+
+  .explain { font-size: .85rem; color: var(--muted); margin: 12px 0 0; }
+
+  /* ===== 하단 ===== */
+  footer { font-size: .85rem; color: var(--muted); padding-bottom: 24px; }
+  footer .disclaimer { font-weight: 700; color: var(--text); }
+  footer p { margin: 4px 0; }
+
+  @media (max-width: 420px) {
+    .card-value { font-size: 1.7rem; }
+    .chart-box { height: 260px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🌊 바다·날씨 예측 보기</h1>
+    <p>지역과 날짜를 고르면 그날의 예상 기온·강수 확률·바람·파도·수온을 보여드립니다.</p>
+  </header>
+
+  <!-- 데이터 불러오기 상태 (실패 시 안내 + 파일 직접 선택) -->
+  <div id="loadStatus" class="panel status" role="status">데이터를 불러오는 중입니다…</div>
+
+  <!-- 샘플 데이터 경고 (meta.is_sample 이 true일 때만 표시) -->
+  <div id="sampleBanner" class="sample-banner" hidden>
+    ⚠️ 현재 <b>샘플 데이터</b>가 표시되고 있습니다. 화면의 수치는 실제 예측이 아닙니다.
+  </div>
+
+  <!-- 1. 상단: 지역·날짜 선택 -->
+  <section class="panel" aria-labelledby="ctrlTitle">
+    <h2 id="ctrlTitle">조회 조건</h2>
+    <div class="controls">
+      <div class="field">
+        <label for="regionSelect">지역</label>
+        <select id="regionSelect" disabled></select>
+      </div>
+      <div class="field">
+        <label for="dateInput">날짜</label>
+        <input id="dateInput" type="date" disabled aria-describedby="dateHint dateError">
+        <p id="dateHint" class="hint">데이터를 불러오면 선택 가능한 기간이 표시됩니다.</p>
+      </div>
+    </div>
+    <!-- 빨간 안내 문구 (입력 오류 시) -->
+    <p id="dateError" class="error" role="alert" aria-live="assertive"></p>
+  </section>
+
+  <!-- 2. 결과 카드 -->
+  <section class="panel" aria-labelledby="resultTitle" aria-live="polite">
+    <h2 id="resultTitle" class="result-title">예측 결과</h2>
+    <p id="resultSub" class="result-sub"></p>
+    <div id="cards"></div>
+    <p id="intervalExplain" class="explain"></p>
+  </section>
+
+  <!-- 3. 일별 추이 그래프 -->
+  <section class="panel" aria-labelledby="chartTitle">
+    <h2 id="chartTitle">일별 추이</h2>
+    <div class="chart-bar">
+      <div class="tabs" id="chartTabs" role="group" aria-label="그래프 항목 선택"></div>
+      <label>
+        <span class="hint" style="margin-right:4px">기간</span>
+        <select id="windowSelect" aria-label="그래프 기간">
+          <option value="3">선택일 ±3일</option>
+          <option value="7">선택일 ±7일</option>
+          <option value="all">전체 기간</option>
+        </select>
+      </label>
+    </div>
+    <div class="chart-box">
+      <canvas id="trendChart" aria-label="일별 예측 추이 그래프" role="img"></canvas>
+      <div id="chartMsg" class="chart-msg" hidden></div>
+    </div>
+    <p class="explain">진한 선은 예상값, 옅은 음영은 예측 범위(불확실성)입니다. 큰 점이 선택한 날짜이며, 그래프의 점을 누르면 그 날짜로 이동합니다. 선이 끊긴 곳은 데이터가 없는 날입니다.</p>
+  </section>
+
+  <!-- 4. 하단: 면책 문구, 출처, 기준일 -->
+  <footer>
+    <p class="disclaimer">본 예측은 참고용이며 기상청 공식 예보를 대체하지 않습니다.</p>
+    <p>데이터 출처: <span id="metaSource">-</span></p>
+    <p>데이터 기준일: <span id="metaUpdated">-</span></p>
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   1. 변수(항목) 설정
+   - key: JSON 필드명 / unit: 기본 단위(meta.units가 있으면 그것을 우선 사용)
+   - interpret: 비전문가용 참고 해석 (값을 바꾸지 않고 설명만 덧붙임)
+   ========================================================= */
+const VARS = [
+  { key: 'temp',       label: '기온',      icon: '🌡️', unit: '℃',   digits: 1, color: '#e4572e' },
+  { key: 'rain_prob',  label: '강수 확률', icon: '☔',  unit: '%',   digits: 0, color: '#3a7bd5', yMin: 0, yMax: 100,
+    interpret: v => v < 30 ? '비 올 가능성 낮음' : v < 60 ? '비 올 가능성 보통' : '비 올 가능성 높음' },
+  { key: 'wind_ms',    label: '풍속',      icon: '💨', unit: 'm/s', digits: 1, color: '#14967f', yMin: 0,
+    // 기상청 바람 세기 구분(4·9·14 m/s)을 참고한 표현
+    interpret: v => v < 4 ? '바람 약함' : v < 9 ? '바람 약간 강함' : v < 14 ? '바람 강함' : '바람 매우 강함' },
+  { key: 'wave_m',     label: '파고',      icon: '🌊', unit: 'm',   digits: 1, color: '#283593', yMin: 0,
+    interpret: v => v < 0.5 ? '물결 잔잔함' : v < 1.5 ? '물결 보통' : v < 2.5 ? '물결 다소 높음' : '물결 높음 · 해상 활동 주의' },
+  { key: 'sea_temp_c', label: '수온',      icon: '🐟', unit: '℃',   digits: 1, color: '#0097a7' }
+];
+
+/* 앱 상태 */
+const state = {
+  meta: {},
+  regions: [],      // 정규화된 지역 목록
+  region: null,     // 현재 선택 지역
+  chartVar: 'temp', // 그래프에 표시할 항목
+  chart: null       // Chart.js 인스턴스
+};
+
+const $ = id => document.getElementById(id);
+const els = {
+  loadStatus: $('loadStatus'), sampleBanner: $('sampleBanner'),
+  region: $('regionSelect'), date: $('dateInput'),
+  dateHint: $('dateHint'), dateError: $('dateError'),
+  resultTitle: $('resultTitle'), resultSub: $('resultSub'),
+  cards: $('cards'), intervalExplain: $('intervalExplain'),
+  tabs: $('chartTabs'), windowSel: $('windowSelect'),
+  canvas: $('trendChart'), chartMsg: $('chartMsg'),
+  metaSource: $('metaSource'), metaUpdated: $('metaUpdated')
+};
+
+/* =========================================================
+   2. 날짜 유틸 (시간대 영향을 받지 않도록 UTC 기준 문자열로 처리)
+   ========================================================= */
+function isValidDateStr(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // 2027-02-30 같은 존재하지 않는 날짜 걸러내기
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+function toUTC(s) { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+function addDays(s, n) { const dt = toUTC(s); dt.setUTCDate(dt.getUTCDate() + n); return dt.toISOString().slice(0, 10); }
+function dateSeq(from, to) {
+  // from~to 사이 모든 날짜 (YYYY-MM-DD 문자열은 사전순 비교 = 날짜 비교)
+  const out = [];
+  for (let d = from; d <= to && out.length < 2000; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+function fmtDateLong(s) { const dt = toUTC(s); return `${dt.getUTCFullYear()}년 ${dt.getUTCMonth() + 1}월 ${dt.getUTCDate()}일 (${WEEK[dt.getUTCDay()]})`; }
+function fmtDateShort(s) { const dt = toUTC(s); return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}(${WEEK[dt.getUTCDay()]})`; }
+function todayStr() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; }
+
+/* =========================================================
+   3. 값 읽기 · 형식 검사
+   - 숫자가 아니거나 없는 값은 null → 화면에 "데이터 없음" 표시
+   - 빈 값을 추정·보간해서 채우지 않음
+   ========================================================= */
+function num(v) { return (typeof v === 'number' && Number.isFinite(v)) ? v : null; }
+
+/** 항목 값을 {mean, low, high} 형태로 통일. 사용 불가하면 null */
+function readVar(entry, key) {
+  if (!entry) return null;
+  const v = entry[key];
+  if (typeof v === 'number') {
+    // 강수 확률처럼 단일 숫자로 제공되는 경우
+    return num(v) === null ? null : { mean: v, low: null, high: null };
+  }
+  if (v && typeof v === 'object') {
+    const mean = num(v.mean);
+    if (mean === null) return null;
+    let low = num(v.low), high = num(v.high);
+    if (low !== null && high !== null && low > high) [low, high] = [high, low]; // 뒤바뀐 범위 정리
+    return { mean, low, high };
+  }
+  return null;
+}
+
+function unitOf(cfg) { return (state.meta.units && typeof state.meta.units[cfg.key] === 'string') ? state.meta.units[cfg.key] : cfg.unit; }
+function fmtNum(v, digits) {
+  const s = v.toFixed(digits);
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s; // "-0.0" 방지
+}
+
+/** 원본 JSON → 내부 구조로 정규화 (형식이 잘못된 항목은 제외하고 개수만 기록) */
+function normalizeData(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.regions)) {
+    throw new Error('JSON에 "regions" 배열이 없습니다.');
+  }
+  let skipped = 0;
+  const regions = raw.regions.map((r, i) => {
+    const byDate = new Map();
+    (Array.isArray(r && r.daily) ? r.daily : []).forEach(e => {
+      if (e && isValidDateStr(e.date)) byDate.set(e.date, e);
+      else skipped++;
+    });
+    const dates = [...byDate.keys()].sort();
+    return {
+      code: String((r && r.code) ?? `region_${i + 1}`),
+      name: String((r && (r.name ?? r.code)) ?? `지역 ${i + 1}`),
+      byDate, dates
+    };
+  });
+  if (regions.length === 0) throw new Error('지역 데이터가 비어 있습니다.');
+  return { meta: (raw.meta && typeof raw.meta === 'object') ? raw.meta : {}, regions, skipped };
+}
+
+/* =========================================================
+   4. 데이터 불러오기
+   - 같은 폴더의 forecast_data.json만 읽음 (외부 API 직접 호출 없음 → API 키 비노출)
+   - 실패하면 원인과 해결 방법을 안내하고, 파일 직접 선택 기능 제공
+   ========================================================= */
+async function loadFromServer() {
+  try {
+    const res = await fetch('forecast_data.json', { cache: 'no-cache' });
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { http: res.status });
+    const raw = await res.json();
+    init(raw);
+  } catch (err) {
+    showLoadError(err);
+  }
+}
+
+function showLoadError(err) {
+  const isFile = location.protocol === 'file:';
+  let reason;
+  if (err instanceof SyntaxError) reason = 'forecast_data.json 파일의 JSON 형식이 올바르지 않습니다.';
+  else if (err.http === 404) reason = '같은 폴더에서 forecast_data.json 파일을 찾을 수 없습니다.';
+  else if (isFile) reason = '브라우저 보안 정책 때문에 파일을 더블클릭해 열면(file://) JSON을 읽을 수 없습니다.';
+  else reason = `데이터를 불러오지 못했습니다. (${err.message})`;
+
+  els.loadStatus.className = 'panel status bad';
+  els.loadStatus.innerHTML = '';
+  const p = document.createElement('p');
+  p.style.margin = '0';
+  p.innerHTML = '<b>데이터 없음</b> — ';
+  p.append(reason);
+  els.loadStatus.append(p);
+
+  if (isFile || err.http === 404) {
+    const help = document.createElement('div');
+    help.innerHTML = '터미널에서 이 HTML이 있는 폴더로 이동한 뒤 아래 명령을 실행하고, '
+      + '<b>http://localhost:8000/forecast_app.html</b> 로 접속하세요.'
+      + '<pre>python -m http.server 8000</pre>';
+    els.loadStatus.append(help);
+  }
+  els.loadStatus.append(makeFilePicker());
+  renderNoData('예측 데이터를 불러오지 못해 결과를 표시할 수 없습니다.');
+}
+
+/** 서버 없이도 확인할 수 있도록 JSON 파일을 직접 고르는 버튼 */
+function makeFilePicker() {
+  const label = document.createElement('label');
+  label.className = 'file-btn';
+  label.textContent = '📂 JSON 파일 직접 열기';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.addEventListener('change', () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { init(JSON.parse(reader.result)); }
+      catch (e) { showLoadError(e instanceof SyntaxError ? e : new Error(e.message)); }
+    };
+    reader.readAsText(f, 'utf-8');
+  });
+  label.append(input);
+  return label;
+}
+
+/* =========================================================
+   5. 초기화
+   ========================================================= */
+function init(raw) {
+  let data;
+  try { data = normalizeData(raw); }
+  catch (e) {
+    els.loadStatus.className = 'panel status bad';
+    els.loadStatus.textContent = `데이터 없음 — ${e.message}`;
+    els.loadStatus.append(document.createElement('br'), makeFilePicker());
+    renderNoData('데이터 형식이 올바르지 않습니다.');
+    return;
+  }
+  state.meta = data.meta;
+  state.regions = data.regions;
+
+  // 상태 표시: 성공 시 숨김 (형식 오류 항목이 있었다면 알림)
+  if (data.skipped > 0) {
+    els.loadStatus.className = 'panel status';
+    els.loadStatus.textContent = `⚠️ 날짜 형식이 잘못된 항목 ${data.skipped}개는 제외하고 표시합니다.`;
+    els.loadStatus.hidden = false;
+  } else {
+    els.loadStatus.hidden = true;
+  }
+  els.sampleBanner.hidden = state.meta.is_sample !== true;
+
+  // 하단 출처·기준일 (textContent 사용 → HTML 삽입 방지)
+  els.metaSource.textContent = state.meta.source || '정보 없음';
+  els.metaUpdated.textContent = state.meta.updated || '정보 없음';
+
+  // 신뢰구간 설명 문구
+  const intervalLabel = state.meta.interval_label || '예측 범위';
+  els.intervalExplain.textContent =
+    `“범위”(${intervalLabel})는 실제 값이 이 사이에 들어올 가능성이 높은 구간입니다. 범위가 넓을수록 예측이 불확실하다는 뜻입니다.`;
+
+  // 지역 드롭다운 채우기
+  els.region.innerHTML = '';
+  state.regions.forEach((r, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = r.dates.length ? r.name : `${r.name} (데이터 없음)`;
+    els.region.append(opt);
+  });
+  els.region.disabled = false;
+
+  // 첫 번째로 데이터가 있는 지역 선택
+  const firstIdx = Math.max(0, state.regions.findIndex(r => r.dates.length > 0));
+  els.region.value = String(firstIdx);
+  selectRegion(firstIdx, true);
+}
+
+/** 지역 변경: 날짜 선택 범위를 해당 지역 데이터 범위로 제한 */
+function selectRegion(idx, isInit) {
+  const r = state.regions[idx];
+  state.region = r;
+
+  if (!r.dates.length) {
+    els.date.disabled = true;
+    els.date.removeAttribute('min'); els.date.removeAttribute('max');
+    els.dateHint.textContent = '이 지역에는 예측 데이터가 없습니다.';
+    setError('');
+    renderNoData(`${r.name}: 데이터 없음`);
+    renderChart(null);
+    return;
+  }
+
+  const min = r.dates[0], max = r.dates[r.dates.length - 1];
+  els.date.disabled = false;
+  els.date.min = min;
+  els.date.max = max;
+  els.dateHint.textContent = `선택 가능 기간: ${min} ~ ${max}`;
+
+  // 기존 날짜가 새 범위 안이면 유지, 아니면 오늘(범위 안일 때) 또는 첫 날짜로
+  const cur = els.date.value;
+  if (isInit || !isValidDateStr(cur) || cur < min || cur > max) {
+    const t = todayStr();
+    els.date.value = (t >= min && t <= max) ? t : min;
+  }
+  update();
+}
+
+/* =========================================================
+   6. 입력 검증
+   ========================================================= */
+function validateDate() {
+  const r = state.region;
+  const raw = els.date.value;
+  // 브라우저가 해석하지 못한 입력(예: 2027-13-45 타이핑)
+  if (els.date.validity && els.date.validity.badInput) {
+    return { ok: false, msg: '날짜 형식이 올바르지 않습니다. 예) 2027-01-01 처럼 입력하세요.' };
+  }
+  if (!raw) return { ok: false, msg: '날짜를 선택하세요.' };
+  if (!isValidDateStr(raw)) {
+    return { ok: false, msg: '날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식(예: 2027-01-01)으로 입력하세요.' };
+  }
+  const min = r.dates[0], max = r.dates[r.dates.length - 1];
+  if (raw < min || raw > max) {
+    return { ok: false, msg: `선택한 날짜(${raw})는 데이터 범위(${min} ~ ${max})를 벗어났습니다. 범위 안의 날짜를 선택하세요.` };
+  }
+  return { ok: true, date: raw };
+}
+
+function setError(msg) {
+  els.dateError.textContent = msg;
+  els.date.setAttribute('aria-invalid', msg ? 'true' : 'false');
+}
+
+/* =========================================================
+   7. 화면 갱신 (날짜·지역·그래프 옵션이 바뀔 때마다 즉시 호출)
+   ========================================================= */
+function update() {
+  const r = state.region;
+  if (!r || !r.dates.length) return;
+  const v = validateDate();
+  if (!v.ok) {
+    setError(v.msg);
+    renderNoData('올바른 날짜를 선택하면 예측 결과가 표시됩니다.', true);
+    renderChart(null);
+    return;
+  }
+  setError('');
+  renderCards(r, v.date);
+  renderChart(v.date);
+}
+
+/** 결과 영역에 "데이터 없음"/안내 상태 표시 */
+function renderNoData(msg, isInputIssue) {
+  els.resultTitle.textContent = '예측 결과';
+  els.resultSub.textContent = '';
+  els.cards.className = '';
+  els.cards.innerHTML = '';
+  const box = document.createElement('div');
+  box.className = 'empty';
+  const strong = document.createElement('strong');
+  strong.textContent = isInputIssue ? '결과 없음' : '데이터 없음';
+  box.append(strong, msg);
+  els.cards.append(box);
+}
+
+/** 변수별 카드 렌더링 */
+function renderCards(r, date) {
+  const entry = r.byDate.get(date);
+  els.resultTitle.textContent = `${r.name} · ${fmtDateLong(date)}`;
+
+  // 범위 안 날짜지만 해당 날짜 데이터가 아예 없는 경우
+  if (!entry) {
+    els.resultSub.textContent = '';
+    renderNoData(`${r.name}의 ${date} 예측 데이터가 없습니다.`);
+    els.resultTitle.textContent = `${r.name} · ${fmtDateLong(date)}`;
+    return;
+  }
+  els.resultSub.textContent = '큰 숫자는 예상값, 아래 작은 숫자는 예측 범위(하한 ~ 상한)입니다.';
+  els.cards.className = 'cards';
+  els.cards.innerHTML = '';
+
+  VARS.forEach(cfg => {
+    const val = readVar(entry, cfg.key);
+    const unit = unitOf(cfg);
+    const card = document.createElement('article');
+    card.className = 'card' + (val ? '' : ' missing');
+    card.style.setProperty('--c', cfg.color);
+
+    const head = document.createElement('div');
+    head.className = 'card-head';
+    head.textContent = `${cfg.icon} ${cfg.label}`;
+
+    const value = document.createElement('div');
+    value.className = 'card-value';
+    const range = document.createElement('div');
+    range.className = 'card-range';
+
+    if (!val) {
+      value.textContent = '데이터 없음';
+      range.textContent = '이 날짜의 값이 제공되지 않았습니다.';
+      card.append(head, value, range);
+    } else {
+      value.textContent = fmtNum(val.mean, cfg.digits);
+      const u = document.createElement('span');
+      u.className = 'unit';
+      u.textContent = unit;
+      value.append(u);
+
+      if (val.low !== null && val.high !== null) {
+        range.innerHTML = '범위 ';
+        const b = document.createElement('b');
+        b.textContent = `${fmtNum(val.low, cfg.digits)} ~ ${fmtNum(val.high, cfg.digits)}${unit}`;
+        range.append(b);
+        range.title = `하한 ${fmtNum(val.low, cfg.digits)}${unit}, 상한 ${fmtNum(val.high, cfg.digits)}${unit}`;
+      } else if (cfg.key === 'rain_prob') {
+        // 강수 확률은 값 자체가 불확실성을 나타내는 확률 표현
+        range.textContent = '확률 자체가 불확실성 표현 (별도 범위 없음)';
+      } else {
+        range.textContent = '예측 범위 정보 없음';
+      }
+      card.append(head, value, range);
+
+      if (cfg.interpret) {
+        const note = document.createElement('span');
+        note.className = 'card-note';
+        note.textContent = cfg.interpret(val.mean);
+        card.append(note);
+      }
+    }
+    els.cards.append(card);
+  });
+}
+
+/* =========================================================
+   8. 그래프 (Chart.js) — 평균선 + 신뢰구간 음영
+   ========================================================= */
+function buildTabs() {
+  VARS.forEach(cfg => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tab';
+    b.textContent = `${cfg.icon} ${cfg.label}`;
+    b.dataset.key = cfg.key;
+    b.setAttribute('aria-pressed', String(cfg.key === state.chartVar));
+    b.addEventListener('click', () => {
+      state.chartVar = cfg.key;
+      els.tabs.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.key === cfg.key)));
+      update();
+    });
+    els.tabs.append(b);
+  });
+}
+
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function showChartMsg(msg) {
+  els.chartMsg.textContent = msg;
+  els.chartMsg.hidden = !msg;
+}
+
+/** centerDate: 선택된 날짜 (잘못된 입력이면 null → 전체 기간 표시, 강조 없음) */
+function renderChart(centerDate) {
+  if (typeof Chart === 'undefined') {
+    showChartMsg('그래프 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요. (카드 결과는 정상 표시됩니다)');
+    return;
+  }
+  const r = state.region;
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+  if (!r || !r.dates.length) { showChartMsg('데이터 없음'); return; }
+
+  // 표시 기간 계산 (데이터 범위 안으로 제한)
+  const min = r.dates[0], max = r.dates[r.dates.length - 1];
+  const w = els.windowSel.value;
+  let from = min, to = max;
+  if (centerDate && w !== 'all') {
+    const n = Number(w);
+    from = addDays(centerDate, -n); if (from < min) from = min;
+    to = addDays(centerDate, n);    if (to > max) to = max;
+  }
+  const days = dateSeq(from, to);
+
+  const cfg = VARS.find(v => v.key === state.chartVar);
+  const unit = unitOf(cfg);
+  const vals = days.map(d => readVar(r.byDate.get(d), cfg.key)); // 없는 날은 null (보간하지 않음)
+  const means = vals.map(v => v ? v.mean : null);
+  const lows  = vals.map(v => v && v.low  !== null && v.high !== null ? v.low  : null);
+  const highs = vals.map(v => v && v.low  !== null && v.high !== null ? v.high : null);
+  const hasBand = lows.some(v => v !== null);
+
+  showChartMsg(means.every(v => v === null) ? `이 기간에는 ${cfg.label} 데이터가 없습니다.` : '');
+
+  const datasets = [];
+  if (hasBand) {
+    datasets.push({
+      role: 'low', label: '하한', data: lows,
+      borderWidth: 0, pointRadius: 0, pointHitRadius: 0, fill: false, spanGaps: false
+    });
+    datasets.push({
+      role: 'high', label: state.meta.interval_label || '예측 범위', data: highs,
+      borderWidth: 0, pointRadius: 0, pointHitRadius: 0,
+      backgroundColor: hexToRgba(cfg.color, 0.18),
+      fill: '-1', // 바로 앞 데이터셋(하한)까지 음영 채우기
+      spanGaps: false
+    });
+  }
+  datasets.push({
+    role: 'mean', label: `${cfg.label} 예상값`, data: means,
+    borderColor: cfg.color, backgroundColor: cfg.color, borderWidth: 2.5,
+    tension: 0.25, fill: false, spanGaps: false,
+    pointRadius: days.map(d => d === centerDate ? 7 : 3),
+    pointBackgroundColor: days.map(d => d === centerDate ? '#fff' : cfg.color),
+    pointBorderWidth: days.map(d => d === centerDate ? 3 : 1),
+    pointHoverRadius: 7
+  });
+
+  state.chart = new Chart(els.canvas, {
+    type: 'line',
+    data: { labels: days.map(fmtDateShort), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          min: cfg.yMin, max: cfg.yMax,
+          title: { display: true, text: `${cfg.label} (${unit})` },
+          grid: { color: '#e8edf2' }
+        },
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } }
+      },
+      plugins: {
+        legend: {
+          labels: { boxWidth: 14, filter: item => datasets[item.datasetIndex].role !== 'low' }
+        },
+        tooltip: {
+          filter: item => item.dataset.role === 'mean',
+          callbacks: {
+            title: items => items.length ? fmtDateLong(days[items[0].dataIndex]) : '',
+            label: item => {
+              const v = vals[item.dataIndex];
+              if (!v) return '데이터 없음';
+              let s = `예상 ${fmtNum(v.mean, cfg.digits)}${unit}`;
+              if (v.low !== null && v.high !== null) s += ` (범위 ${fmtNum(v.low, cfg.digits)} ~ ${fmtNum(v.high, cfg.digits)}${unit})`;
+              return s;
+            }
+          }
+        }
+      },
+      // 그래프의 점을 누르면 해당 날짜로 이동
+      onClick: (evt) => {
+        const pts = state.chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+        if (!pts.length) return;
+        const d = days[pts[0].index];
+        if (r.byDate.has(d)) { els.date.value = d; update(); }
+      }
+    }
+  });
+}
+
+/* =========================================================
+   9. 이벤트 연결 — 변경 즉시 갱신
+   ========================================================= */
+els.region.addEventListener('change', () => selectRegion(Number(els.region.value), false));
+els.date.addEventListener('input', update);   // 입력 도중에도 즉시 반영
+els.date.addEventListener('change', update);
+els.windowSel.addEventListener('change', update);
+
+buildTabs();
+loadFromServer();
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+{
+  "_comment": "※ 이 파일은 구조 확인용 샘플입니다. 모든 수치는 임의로 만든 예시 값이며 실제 예측이 아닙니다. JSON은 주석 문법을 지원하지 않으므로 '_comment' 필드로 안내합니다.",
+  "meta": {
+    "source": "샘플 데이터 (실제 운영 시: 기상청 중기예보·국립해양조사원 해양관측 자료 등을 서버에서 가공)",
+    "updated": "2026-11-04",
+    "is_sample": true,
+    "interval_label": "80% 예측 범위",
+    "units": {
+      "temp": "℃",
+      "rain_prob": "%",
+      "wind_ms": "m/s",
+      "wave_m": "m",
+      "sea_temp_c": "℃"
+    }
+  },
+  "regions": [
+    {
+      "code": "busan_sea",
+      "name": "부산 연안",
+      "_comment": "샘플 값 — 3일치 전체 변수가 채워진 예시",
+      "daily": [
+        {
+          "date": "2027-01-01",
+          "temp": { "mean": 3.2, "low": 1.1, "high": 5.4 },
+          "rain_prob": 30,
+          "wind_ms": { "mean": 6.1, "low": 4.0, "high": 8.3 },
+          "wave_m": { "mean": 1.4, "low": 0.8, "high": 2.1 },
+          "sea_temp_c": { "mean": 9.8, "low": 8.9, "high": 10.7 }
+        },
+        {
+          "date": "2027-01-02",
+          "temp": { "mean": 2.5, "low": 0.2, "high": 4.9 },
+          "rain_prob": 60,
+          "wind_ms": { "mean": 9.4, "low": 6.8, "high": 12.1 },
+          "wave_m": { "mean": 2.3, "low": 1.5, "high": 3.2 },
+          "sea_temp_c": { "mean": 9.6, "low": 8.6, "high": 10.5 }
+        },
+        {
+          "date": "2027-01-03",
+          "temp": { "mean": 4.1, "low": 1.8, "high": 6.6 },
+          "rain_prob": 10,
+          "wind_ms": { "mean": 4.8, "low": 3.1, "high": 6.7 },
+          "wave_m": { "mean": 1.0, "low": 0.6, "high": 1.6 },
+          "sea_temp_c": { "mean": 9.7, "low": 8.7, "high": 10.8 }
+        }
+      ]
+    },
+    {
+      "code": "jeju_sea",
+      "name": "제주 연안",
+      "_comment": "샘플 값 — 1월 2일 수온(sea_temp_c)을 일부러 비워 '데이터 없음' 표시를 확인하는 예시",
+      "daily": [
+        {
+          "date": "2027-01-01",
+          "temp": { "mean": 7.4, "low": 5.6, "high": 9.1 },
+          "rain_prob": 40,
+          "wind_ms": { "mean": 7.9, "low": 5.5, "high": 10.4 },
+          "wave_m": { "mean": 1.9, "low": 1.2, "high": 2.7 },
+          "sea_temp_c": { "mean": 14.6, "low": 13.9, "high": 15.3 }
+        },
+        {
+          "date": "2027-01-02",
+          "temp": { "mean": 6.8, "low": 4.7, "high": 8.8 },
+          "rain_prob": 70,
+          "wind_ms": { "mean": 11.2, "low": 8.4, "high": 14.0 },
+          "wave_m": { "mean": 2.9, "low": 2.0, "high": 3.9 }
+        },
+        {
+          "date": "2027-01-03",
+          "temp": { "mean": 8.0, "low": 6.1, "high": 9.9 },
+          "rain_prob": 20,
+          "wind_ms": { "mean": 6.3, "low": 4.2, "high": 8.5 },
+          "wave_m": { "mean": 1.6, "low": 1.0, "high": 2.3 },
+          "sea_temp_c": { "mean": 14.4, "low": 13.6, "high": 15.2 }
+        }
+      ]
+    }
+  ]
+}
